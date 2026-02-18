@@ -1,0 +1,45 @@
+// Permissões por setor e destinos permitidos
+export const acl = {
+  RH: {
+    send: true,
+    view_sent: true,
+    view_received: false,
+    evaluate: false,
+    delete_if_pending: true,
+    reset_password: true,
+    notifications: true,
+    destinations: [
+      "TI", "Peças", "Funilaria", "Assistencia Técnica", "Financeira", "Pos vendas",
+      "Qualidade", "Vendas", "Diretoria", "Marketing", "Trafego Avanti", "Segurança",
+      "Veiculos seminovos", "Veiculos novos", "Trafego solaris", "Manutenção"
+    ],
+    hidden_sent_from: ["Peças"]
+  },
+  "Peças": {
+    send: true,
+    view_sent: true,
+    view_received: true,
+    evaluate: true,
+    delete_if_pending: true,
+    reset_password: true,
+    notifications: true,
+    destinations: ["TI", "Veiculos novos", "Veiculos seminovos", "Assistencia Técnica", "Funilaria", "Diretoria"],
+    hidden_sent_from: ["RH"]
+  },
+  // Usuários comuns
+  TI: { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
+  Funilaria: { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
+  "Assistencia Técnica": { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
+  Financeira: { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
+  "Pos vendas": { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
+  Qualidade: { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
+  Vendas: { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
+  Diretoria: { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
+  Marketing: { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
+  "Trafego Avanti": { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
+  Segurança: { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
+  "Veiculos seminovos": { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
+  "Veiculos novos": { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
+  "Trafego solaris": { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
+  "Manutenção": { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] }
+};
