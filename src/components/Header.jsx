@@ -6,13 +6,6 @@ export default function Header({ title, user, onToggleSidebar }) {
   return (
     <div className="topbar">
       <div className="left">
-        <button className="btn toggle-mobile" onClick={onToggleSidebar}>
-          <svg width="18" height="18" viewBox="0 0 18 18">
-            <rect x="2" y="4" width="14" height="2" rx="1" fill="currentColor" />
-            <rect x="2" y="8" width="14" height="2" rx="1" fill="currentColor" />
-            <rect x="2" y="12" width="14" height="2" rx="1" fill="currentColor" />
-          </svg>
-        </button>
         <div className="top-title">{title}</div>
       </div>
       <div className="right">

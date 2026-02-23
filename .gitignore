@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+.vite/
+.vscode/
+
+# env and local config
+.env*
+!.env.example
+
+# OS / logs / archives
+.DS_Store
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+*.zip

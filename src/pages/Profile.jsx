@@ -12,6 +12,8 @@ export default function Profile() {
   const [err, setErr] = useState(null);
   const [pwd, setPwd] = useState("");
   const [pwd2, setPwd2] = useState("");
+  const [show1, setShow1] = useState(false);
+  const [show2, setShow2] = useState(false);
 
   const onAvatar = (e) => {
     const f = e.target.files?.[0];
@@ -66,11 +68,21 @@ export default function Profile() {
         <div className="form">
           <div className="form-row">
             <label>Nova senha</label>
-            <input type="password" value={pwd} onChange={(e) => setPwd(e.target.value)} placeholder="Digite a nova senha" />
+            <div style={{ position: "relative" }}>
+              <input type={show1 ? "text" : "password"} value={pwd} onChange={(e) => setPwd(e.target.value)} placeholder="Digite a nova senha" />
+              <button type="button" className="btn small" onClick={() => setShow1(s => !s)} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)" }}>
+                {show1 ? "Ocultar" : "Mostrar"}
+              </button>
+            </div>
           </div>
           <div className="form-row">
             <label>Confirmar nova senha</label>
-            <input type="password" value={pwd2} onChange={(e) => setPwd2(e.target.value)} placeholder="Confirme a nova senha" />
+            <div style={{ position: "relative" }}>
+              <input type={show2 ? "text" : "password"} value={pwd2} onChange={(e) => setPwd2(e.target.value)} placeholder="Confirme a nova senha" />
+              <button type="button" className="btn small" onClick={() => setShow2(s => !s)} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)" }}>
+                {show2 ? "Ocultar" : "Mostrar"}
+              </button>
+            </div>
           </div>
           <button className="btn warning" disabled={loading} onClick={changePassword}>Alterar senha</button>
         </div>

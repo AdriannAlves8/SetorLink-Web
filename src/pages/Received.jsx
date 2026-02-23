@@ -9,13 +9,17 @@ export default function Received() {
   const { user, can } = useAuth();
   const [docs, setDocs] = useState([]);
   const [filter, setFilter] = useState("Todos");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     (async () => {
-      const list = await api.getReceived(user.sector);
-      setDocs(list);
+      const res = await api.getReceived(user.sector, { page, pageSize });
+      setDocs(res.items);
+      setTotal(res.total);
     })();
-  }, [user.sector]);
+  }, [user.sector, page, pageSize]);
 
   const filtered = docs.filter(d => {
     if (filter === "Todos") return true;
@@ -46,7 +50,11 @@ export default function Received() {
                   <span className={`status ${d.status === statuses.APROVADO ? "aprovado" : d.status === statuses.REPROVADO ? "reprovado" : "pendente"}`}>{d.status}</span>
                 </td>
                 <td>
-                  {can("evaluate") && <NavLink className="btn" to={`/avaliar/${d.id}`}>Avaliar</NavLink>}
+                  {d.status === statuses.PENDENTE && can("evaluate") ? (
+                    <NavLink className="btn" to={`/avaliar/${d.id}`}>Avaliar</NavLink>
+                  ) : (
+                    <NavLink className="btn" to={`/documento/${d.id}`}>Detalhes</NavLink>
+                  )}
                 </td>
               </tr>
             ))}
@@ -55,6 +63,22 @@ export default function Received() {
             )}
           </tbody>
         </table>
+        <div className="pagination" style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+          <div>
+            <button className="btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}>Anterior</button>
+            <button className="btn" onClick={() => setPage(p => (p * pageSize < total ? p + 1 : p))} disabled={page * pageSize >= total}>Próxima</button>
+          </div>
+          <div>
+            Página {page} de {Math.max(1, Math.ceil(total / pageSize))}
+          </div>
+          <div>
+            <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}>
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+            </select>
+          </div>
+        </div>
       </div>
     </>
   );

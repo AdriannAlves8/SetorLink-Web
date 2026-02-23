@@ -27,18 +27,18 @@ export default function Sidebar({ items, onLogout }) {
       <nav className="nav">
         {items.map((item) =>
           item.to ? (
-            <NavLink key={item.label} to={item.to} end={item.end}>
+            <NavLink key={item.label} to={item.to} end={item.end} title={item.label} aria-label={item.label}>
               <span className="nav-ico-svg">{iconFor(item.icon)}</span>
               <span>{item.label}</span>
             </NavLink>
           ) : (
-            <button key={item.label} className="btn" style={{ justifyContent: "flex-start" }}>
+            <button key={item.label} className="btn" style={{ justifyContent: "flex-start" }} title={item.label} aria-label={item.label}>
               <span className="nav-ico-svg">{iconFor(item.icon)}</span>
               <span>{item.label}</span>
             </button>
           )
         )}
-        <button className="btn logout" onClick={onLogout}>
+        <button className="btn logout" onClick={onLogout} title="Sair" aria-label="Sair">
           <span className="nav-ico-svg"><LogoutIcon /></span>
           <span>Sair</span>
         </button>

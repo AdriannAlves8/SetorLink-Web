@@ -13,7 +13,17 @@ export default function Notifications() {
     const ns = await api.getNotifications(user.sector);
     setItems(ns);
   }
-  useEffect(() => { load(); }, [user.sector]);
+  
+  useEffect(() => { 
+    load();
+    const onStorage = (e) => {
+      if (e.key === "setorlink.notifications") {
+        load();
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [user.sector]);
 
   const remove = async (id) => {
     setLoading(true);
@@ -32,22 +42,21 @@ export default function Notifications() {
     <>
       <div className="content-header">
         <div className="page-title">Notificações</div>
-        <div className="badge">{items.length}</div>
+        <div className="notification-badge">{items.length}</div>
       </div>
       <div className="card col-12">
         {items.length === 0 && <div className="empty">Sem notificações</div>}
         <div className="notif-actions">
-          <button className="btn danger" disabled={loading || items.length === 0} onClick={clear}>Limpar tudo</button>
+          <button className="btn warning small" disabled={loading || items.length === 0} onClick={clear}>Limpar tudo</button>
         </div>
         <div className="notif-grid">
           {items.map(n => (
             <NotificationCard
               key={n.id}
-              title={n.newStatus === statuses.APROVADO ? `Aprovado pelo setor ${n.reviewerSector}` : `Reprovado pelo setor ${n.reviewerSector}`}
+              title={n.title}
               documentTitle={n.documentTitle}
               date={n.date}
               status={n.newStatus}
-              reason={n.reason}
               onDelete={() => remove(n.id)}
             />
           ))}

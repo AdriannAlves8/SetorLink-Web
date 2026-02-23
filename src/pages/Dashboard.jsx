@@ -17,33 +17,33 @@ export default function Dashboard() {
 
   useEffect(() => {
     (async () => {
-      const r = await api.getReceived(user.sector);
-      setReceived(r);
+      const r = await api.getReceived(user.sector, { page: 1, pageSize: 50 });
+      setReceived(r.items);
       const n = await api.getNotifications(user.sector);
       setNotifications(n);
       if (can("view_sent")) {
         const hidden = acl[user.sector]?.hidden_sent_from || [];
-        const s = await api.getSent(user.sector, hidden);
-        setSent(s);
+        const s = await api.getSent(user.sector, hidden, { page: 1, pageSize: 50 });
+        setSent(s.items);
       } else {
         setSent([]);
       }
-      const st = await api.getStats(user.sector);
+      const st = await api.getStats(user.sector, { source: can("view_received") ? "received" : "sent" });
       setStats(st);
     })();
     const onStorage = (e) => {
       if (e.key === "setorlink.documents" || e.key === "setorlink.notifications") {
         (async () => {
-          const r = await api.getReceived(user.sector);
-          setReceived(r);
-          const st = await api.getStats(user.sector);
+          const r = await api.getReceived(user.sector, { page: 1, pageSize: 50 });
+          setReceived(r.items);
+          const st = await api.getStats(user.sector, { source: can("view_received") ? "received" : "sent" });
           setStats(st);
           const n = await api.getNotifications(user.sector);
           setNotifications(n);
           if (can("view_sent")) {
             const hidden = acl[user.sector]?.hidden_sent_from || [];
-            const s = await api.getSent(user.sector, hidden);
-            setSent(s);
+            const s = await api.getSent(user.sector, hidden, { page: 1, pageSize: 50 });
+            setSent(s.items);
           } else {
             setSent([]);
           }
@@ -53,7 +53,7 @@ export default function Dashboard() {
     window.addEventListener("storage", onStorage);
     document.addEventListener("visibilitychange", async () => {
       if (document.visibilityState === "visible") {
-        const st = await api.getStats(user.sector);
+        const st = await api.getStats(user.sector, { source: can("view_received") ? "received" : "sent" });
         setStats(st);
       }
     });
@@ -107,7 +107,7 @@ export default function Dashboard() {
                   meta2={new Date(d.date).toLocaleString()}
                   actionLabel="Detalhes"
                   actionTo={`/documento/${d.id}`}
-                />
+               />
               ))}
               {sent.length === 0 && <div style={{ color: "var(--color-muted)" }}>Sem documentos</div>}
             </div>

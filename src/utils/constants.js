@@ -4,17 +4,17 @@ export const sectors = [
   "TI",
   "Funilaria",
   "Assistencia Técnica",
-  "Financeira",
-  "Pos vendas",
+  "Financeiro",
+  "Pós-Vendas",
   "Qualidade",
   "Vendas",
   "Diretoria",
   "Marketing",
-  "Trafego Avanti",
+  "Tráfego Avanti",
   "Segurança",
   "Veiculos seminovos",
   "Veiculos novos",
-  "Trafego solaris",
+  "Tráfego Solaris",
   "Manutenção"
 ];
 
