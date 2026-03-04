@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import * as api from "../services/api.js";
-import { statuses } from "../utils/constants.js";
+import { statuses, statusClass, normalizeStatus } from "../utils/constants.js";
 
 export default function DocumentDetail() {
   const { id } = useParams();
   const [doc, setDoc] = useState(null);
+  const [openError, setOpenError] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -15,6 +16,16 @@ export default function DocumentDetail() {
   }, [id]);
 
   if (!doc) return <div style={{ padding: 24 }}>Carregando...</div>;
+  const openFile = () => {
+    try {
+      setOpenError(null);
+      const url = api.getFileViewUrl(doc.fileData);
+      window.open(url, "_blank");
+    } catch (err) {
+      console.error("Erro ao abrir arquivo:", err);
+      setOpenError(err.message || "Falha ao abrir arquivo");
+    }
+  };
   return (
     <>
       <div className="content-header">
@@ -44,10 +55,10 @@ export default function DocumentDetail() {
         <div className="info-card">
           <div className="info-title">Status</div>
           <div className="info-value">
-            <span className={`status ${doc.status === statuses.APROVADO ? "aprovado" : doc.status === statuses.REPROVADO ? "reprovado" : "pendente"}`}>{doc.status}</span>
+            <span className={`status ${statusClass(doc.status)}`}>{normalizeStatus(doc.status)}</span>
           </div>
         </div>
-        {doc.status === statuses.REPROVADO && doc.reason && (
+        {normalizeStatus(doc.status) === statuses.REPROVADO && doc.reason && (
           <div className="info-card">
             <div className="info-title">Motivo da reprovação</div>
             <div className="info-value">{doc.reason}</div>
@@ -56,11 +67,8 @@ export default function DocumentDetail() {
         <div className="info-card">
           <div className="info-title">Arquivo</div>
           <div className="info-value">
-            {doc.fileData ? (
-              <a className="btn" href={doc.fileData} target="_blank" rel="noreferrer">Abrir arquivo</a>
-            ) : (
-              <span className="chip">Sem arquivo</span>
-            )}
+            {doc.fileData ? <button className="btn" onClick={openFile}>Abrir arquivo</button> : <span className="chip">Sem arquivo</span>}
+            {openError && <span className="chip" style={{ color: "var(--red)", marginLeft: 8 }}>{openError}</span>}
           </div>
         </div>
       </div>

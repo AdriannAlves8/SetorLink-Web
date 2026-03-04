@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 import * as api from "../services/api.js";
-import { statuses } from "../utils/constants.js";
+import { statuses, statusClass, normalizeStatus } from "../utils/constants.js";
 import { NavLink } from "react-router-dom";
 import StatusFilter from "../components/StatusFilter.jsx";
 
@@ -13,12 +13,21 @@ export default function Received() {
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
 
+  async function load() {
+    const res = await api.getReceived(user.sector, { page, pageSize });
+    setDocs(res.items);
+    setTotal(res.total);
+  }
+
   useEffect(() => {
-    (async () => {
-      const res = await api.getReceived(user.sector, { page, pageSize });
-      setDocs(res.items);
-      setTotal(res.total);
-    })();
+    load();
+  }, [user.sector, page, pageSize]);
+
+  useEffect(() => {
+    const unsub = api.subscribeToProposals(() => {
+      load();
+    });
+    return () => { try { unsub(); } catch {} };
   }, [user.sector, page, pageSize]);
 
   const filtered = docs.filter(d => {
@@ -47,7 +56,7 @@ export default function Received() {
                 <td>{d.senderSector}</td>
                 <td>{new Date(d.date).toLocaleString()}</td>
                 <td>
-                  <span className={`status ${d.status === statuses.APROVADO ? "aprovado" : d.status === statuses.REPROVADO ? "reprovado" : "pendente"}`}>{d.status}</span>
+                  <span className={`status ${statusClass(d.status)}`}>{normalizeStatus(d.status)}</span>
                 </td>
                 <td>
                   {d.status === statuses.PENDENTE && can("evaluate") ? (

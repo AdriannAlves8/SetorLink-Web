@@ -12,8 +12,10 @@ export default function Profile() {
   const [err, setErr] = useState(null);
   const [pwd, setPwd] = useState("");
   const [pwd2, setPwd2] = useState("");
+  const [oldPwd, setOldPwd] = useState("");
   const [show1, setShow1] = useState(false);
   const [show2, setShow2] = useState(false);
+  const [showOld, setShowOld] = useState(false);
 
   const onAvatar = (e) => {
     const f = e.target.files?.[0];
@@ -31,14 +33,14 @@ export default function Profile() {
     setTimeout(() => navigate("/"), 800);
   };
   const changePassword = async () => {
-    // Atualiza senha e persiste no mock API
+    if (!oldPwd) { setErr("Informe sua senha atual."); return; }
     if (!pwd || pwd.length < 4) { setErr("Senha deve ter ao menos 4 caracteres."); return; }
     if (pwd !== pwd2) { setErr("Senhas não conferem."); return; }
     setLoading(true); setMsg(null); setErr(null);
-    await updatePassword(pwd);
+    await updatePassword({ currentPassword: oldPwd, newPassword: pwd });
     setLoading(false);
     setMsg("Senha atualizada");
-    setPwd(""); setPwd2("");
+    setOldPwd(""); setPwd(""); setPwd2("");
     setTimeout(() => navigate("/"), 800);
   };
 
@@ -66,6 +68,15 @@ export default function Profile() {
       </div>
       <div className="card col-12" style={{ marginTop: 16 }}>
         <div className="form">
+          <div className="form-row">
+            <label>Senha atual</label>
+            <div style={{ position: "relative" }}>
+              <input type={showOld ? "text" : "password"} value={oldPwd} onChange={(e) => setOldPwd(e.target.value)} placeholder="Digite sua senha atual" />
+              <button type="button" className="btn small" onClick={() => setShowOld(s => !s)} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)" }}>
+                {showOld ? "Ocultar" : "Mostrar"}
+              </button>
+            </div>
+          </div>
           <div className="form-row">
             <label>Nova senha</label>
             <div style={{ position: "relative" }}>

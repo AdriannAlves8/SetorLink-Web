@@ -18,6 +18,9 @@ import ResetPassword from "../pages/ResetPassword.jsx";
 import Alert from "../components/Alert.jsx";
 import Sidebar from "../components/Sidebar.jsx";
 import DocumentDetail from "../pages/DocumentDetail.jsx";
+import GenerateInvite from "../pages/GenerateInvite.jsx";
+import AcceptInvite from "../pages/AcceptInvite.jsx";
+import VerifyEmail from "../pages/VerifyEmail.jsx";
 
 function Protected({ children, permission }) {
   const { user, loading, can } = useAuth();
@@ -26,10 +29,6 @@ function Protected({ children, permission }) {
   if (loading) return <div style={{ padding: 24 }}>Carregando...</div>;
   if (!user) return <Navigate to="/login" replace />;
   if (permission && !can(permission)) return <Navigate to="/" replace />;
-
-  if (user.mustChangePassword && location.pathname !== "/perfil") {
-    return <Navigate to="/perfil" replace />;
-  }
 
   return children;
 }
@@ -60,6 +59,9 @@ function Layout({ children }) {
             ...(can("send")
               ? [{ label: "Enviar Documento", to: "/enviar", icon: "compose" }]
               : []),
+            ...(can("generate_invite")
+              ? [{ label: "Gerar Convite", to: "/convites/gerar", icon: "compose" }]
+              : []),
             ...(can("notifications")
               ? [{ label: "Notificações", to: "/notificacoes", icon: "bell" }]
               : []),
@@ -74,13 +76,6 @@ function Layout({ children }) {
 
       <main className="content">
         <button className="btn toggle-mobile" onClick={() => setSidebarOpen((s) => !s)}>☰</button>
-
-        {user?.mustChangePassword && (
-          <Alert
-            type="warning"
-            message="Para maior privacidade, altere sua senha."
-          />
-        )}
 
         {children}
       </main>
@@ -113,6 +108,8 @@ export default function AppRouter() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/invite" element={<AcceptInvite />} />
+      <Route path="/verify" element={<VerifyEmail />} />
 
       <Route
         path="/"
@@ -120,6 +117,17 @@ export default function AppRouter() {
           <Protected>
             <Layout>
               <Dashboard />
+            </Layout>
+          </Protected>
+        }
+      />
+
+      <Route
+        path="/convites/gerar"
+        element={
+          <Protected permission="generate_invite">
+            <Layout>
+              <GenerateInvite />
             </Layout>
           </Protected>
         }

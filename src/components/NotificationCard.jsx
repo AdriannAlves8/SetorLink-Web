@@ -1,8 +1,8 @@
 import React from "react";
-import { statuses } from "../utils/constants.js";
+import { statuses, statusClass, normalizeStatus } from "../utils/constants.js";
 
 export default function NotificationCard({ title, documentTitle, date, status, onDelete }) {
-  const cls = status === statuses.APROVADO ? "aprovado" : status === statuses.REPROVADO ? "reprovado" : "pendente";
+  const cls = statusClass(status);
   return (
     <div className="notification-card">
       <div className="notification-content">
@@ -13,7 +13,7 @@ export default function NotificationCard({ title, documentTitle, date, status, o
         </div>
       </div>
       <div className="notification-actions">
-        <span className={`status ${cls}`}>{status}</span>
+        <span className={`status ${cls}`}>{normalizeStatus(status)}</span>
         <button className="btn danger small" onClick={onDelete}>Excluir</button>
       </div>
     </div>

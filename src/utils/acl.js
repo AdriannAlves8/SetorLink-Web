@@ -7,6 +7,7 @@ export const acl = {
     evaluate: false,
     delete_if_pending: true,
     reset_password: true,
+    generate_invite: true,
     notifications: true,
     destinations: [
       "TI", "Peças", "Funilaria", "Assistencia Técnica", "Financeiro", "Pós-Vendas",
@@ -22,8 +23,9 @@ export const acl = {
     evaluate: true,
     delete_if_pending: true,
     reset_password: true,
+    generate_invite: true,
     notifications: true,
-    destinations: ["TI", "Veículos Novos", "Veículos Seminovos", "Assistencia Técnica", "Funilaria", "Diretoria"],
+    destinations: ["TI", "Veículos Novos", "Veículos Seminovos", "Assistencia Técnica","Pós-Vendas", "Funilaria", "Diretoria"],
     hidden_sent_from: ["RH"]
   },
   // Usuários comuns
@@ -36,6 +38,7 @@ export const acl = {
   Vendas: { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
   Diretoria: { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
   Marketing: { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
+  "Assistencia Técnica": { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
   "Tráfego Avanti": { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
   Segurança: { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
   "Veículos Seminovos": { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },

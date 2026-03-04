@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 import * as api from "../services/api.js";
-import { statuses } from "../utils/constants.js";
+import { statuses, statusClass, normalizeStatus } from "../utils/constants.js";
 import { acl } from "../utils/acl.js";
 import { NavLink } from "react-router-dom";
 import Header from "../components/Header.jsx";
@@ -126,8 +126,8 @@ export default function Dashboard() {
                   <div style={{ fontWeight: 600 }}>Documento #{n.documentId.slice(-6).toUpperCase()}</div>
                   <div style={{ fontSize: 12, color: "var(--color-muted)" }}>Status: {n.newStatus} • {new Date(n.date).toLocaleString()}</div>
                 </div>
-                <div className={`status ${n.newStatus === statuses.APROVADO ? "aprovado" : n.newStatus === statuses.REPROVADO ? "reprovado" : "pendente"}`}>
-                  {n.newStatus}
+                  <div className={`status ${statusClass(n.newStatus)}`}>
+                  {normalizeStatus(n.newStatus)}
                 </div>
               </div>
             ))}

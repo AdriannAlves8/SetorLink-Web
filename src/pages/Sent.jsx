@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 import * as api from "../services/api.js";
 import { acl } from "../utils/acl.js";
-import { statuses } from "../utils/constants.js";
+import { statuses, statusClass, normalizeStatus } from "../utils/constants.js";
 import { NavLink, useNavigate } from "react-router-dom";
 import StatusFilter from "../components/StatusFilter.jsx";
 import * as XLSX from "xlsx";
@@ -41,6 +41,13 @@ export default function Sent({ compose = true }) {
 
   useEffect(() => {
     if (user?.sector) load();
+  }, [user?.sector, page, pageSize]);
+
+  useEffect(() => {
+    const unsub = api.subscribeToProposals(() => {
+      if (user?.sector) load();
+    });
+    return () => { try { unsub(); } catch {} };
   }, [user?.sector, page, pageSize]);
 
   // ----------------------------
@@ -89,9 +96,6 @@ export default function Sent({ compose = true }) {
     }
   };
 
-  // ----------------------------
-  // DELETE DOCUMENT
-  // ----------------------------
   const remove = async (id) => {
     try {
       await api.deleteDocumentIfPending(id);
@@ -264,16 +268,8 @@ export default function Sent({ compose = true }) {
                       {new Date(d.date).toLocaleString()}
                     </td>
                     <td>
-                      <span
-                        className={`status ${
-                          d.status === statuses.APROVADO
-                            ? "aprovado"
-                            : d.status === statuses.REPROVADO
-                            ? "reprovado"
-                            : "pendente"
-                        }`}
-                      >
-                        {d.status}
+                      <span className={`status ${statusClass(d.status)}`}>
+                        {normalizeStatus(d.status)}
                       </span>
                     </td>
                     <td>

@@ -1,9 +1,9 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { statuses } from "../utils/constants.js";
+import { statusClass, normalizeStatus } from "../utils/constants.js";
 
 export default function DocumentCard({ title, status, meta1, meta2, actionLabel, actionTo }) {
-  const cls = status === statuses.APROVADO ? "aprovado" : status === statuses.REPROVADO ? "reprovado" : "pendente";
+  const cls = statusClass(status);
   return (
     <div className="doc-card">
       <div className="dc-content">
@@ -14,7 +14,7 @@ export default function DocumentCard({ title, status, meta1, meta2, actionLabel,
         </div>
       </div>
       <div className="dc-status">
-        <span className={`status ${cls}`}>{status}</span>
+        <span className={`status ${cls}`}>{normalizeStatus(status)}</span>
       </div>
       <div className="dc-actions">
         <NavLink className="btn primary" to={actionTo}>{actionLabel}</NavLink>

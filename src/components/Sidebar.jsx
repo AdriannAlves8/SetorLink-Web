@@ -1,6 +1,7 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
 import { HomeIcon, SentIcon, ReceivedIcon, ComposeIcon, BellIcon, UserIcon, KeyIcon, LogoutIcon } from "./Icons.jsx";
+import Logo from "./Logo.jsx";
 
 export default function Sidebar({ items, onLogout }) {
   const iconFor = (name) => {
@@ -19,7 +20,7 @@ export default function Sidebar({ items, onLogout }) {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <div className="logo" />
+        <Logo size={36} src="/logo.png" />
         <div>
           <div className="title">SetorLink</div>
         </div>
