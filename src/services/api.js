@@ -59,22 +59,14 @@ async function getAccount() {
 }
 
 async function createEmailPasswordSessionCompat(email, password) {
-  const fn = account.createEmailPasswordSession;
-  if (typeof fn === "function") {
-    try {
-      // Try positional
-      return await fn.call(account, email, password);
-    } catch {
-      // Try object form
-      try {
-        return await fn.call(account, { email, password });
-      } catch {}
+  try {
+    return await account.createEmailPasswordSession(email, password);
+  } catch (err) {
+    if (typeof account.createEmailSession === "function") {
+      return await account.createEmailSession(email, password);
     }
+    throw err;
   }
-  if (typeof account.createEmailSession === "function") {
-    return await account.createEmailSession(email, password);
-  }
-  throw new Error("Sessão por e-mail não suportada pela versão do SDK");
 }
 
 async function createAccountCompat({ email, password, name }) {
@@ -114,7 +106,7 @@ async function updateVerificationCompat(userId, secret) {
   throw new Error("Atualização de verificação não suportada");
 }
 
-async function getOrCreateUserExtras(userId) {
+async function getOrCreateUserExtras(userId, email = "") {
   try {
     const doc = await databases.getDocument(DB_ID, COL_USUARIOS, userId);
     return doc;
@@ -124,10 +116,13 @@ async function getOrCreateUserExtras(userId) {
         uid: userId,
         setor: "",
         nome: "",
-        isAdmin: false
+        email: email || "",
+        isAdmin: false,
+        status: "aprovado"
       });
       return created;
-    } catch {
+    } catch (err) {
+      console.error("[api.getOrCreateUserExtras] Erro ao criar documento de usuário:", err);
       return null;
     }
   }
@@ -136,7 +131,7 @@ async function getOrCreateUserExtras(userId) {
 export async function getUser() {
   const acc = await getAccount();
   if (!acc) return null;
-  const extras = await getOrCreateUserExtras(acc.$id);
+  const extras = await getOrCreateUserExtras(acc.$id, acc.email);
   const avatarRef = extras?.avatar || extras?.fotoStoragePath || extras?.caminhoDeArmazenamentoDeFotos || null;
   let avatarUrl = null;
   if (avatarRef) {
@@ -163,8 +158,11 @@ export async function logout() {
 ================================ */
 
 function sectorToEmail(sector) {
-  const email = sectorEmails[sector];
-  if (email) return email;
+  let email = sectorEmails[sector];
+  if (email) {
+    if (Array.isArray(email)) email = email[0];
+    return String(email || "").trim();
+  }
   const base = String(sector || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, "");
   return `${base}@setorlink.local`;
 }
@@ -172,7 +170,11 @@ function sectorToEmail(sector) {
 function sectorFromEmail(email) {
   const e = String(email || "").trim().toLowerCase();
   for (const [sec, em] of Object.entries(sectorEmails)) {
-    if (String(em).trim().toLowerCase() === e) return sec;
+    if (Array.isArray(em)) {
+      if (em.some(addr => String(addr).trim().toLowerCase() === e)) return sec;
+    } else {
+      if (String(em).trim().toLowerCase() === e) return sec;
+    }
   }
   return null;
 }
@@ -189,7 +191,7 @@ export async function login(sector, password) {
     throw new Error("EMAIL_NAO_VERIFICADO");
   }
   try {
-    const extras = await getOrCreateUserExtras(acc.$id);
+    const extras = await getOrCreateUserExtras(acc.$id, acc.email);
     if (!extras?.setor || extras.setor !== sector) {
       await databases.updateDocument(DB_ID, COL_USUARIOS, acc.$id, {
         setor: sector,
@@ -225,7 +227,7 @@ export async function loginByEmail(email, password) {
   }
   // Garante doc de usuário e que email esteja gravado
   try {
-    const extras = await getOrCreateUserExtras(acc.$id);
+    const extras = await getOrCreateUserExtras(acc.$id, acc.email);
     const sec = sectorFromEmail(acc.email);
     const payload = {};
     if (!extras?.email || extras.email !== acc.email) payload.email = acc.email;
@@ -270,16 +272,16 @@ export async function sendDocument({
 
   for (const target of targets) {
     const doc = await databases.createDocument(DB_ID, COL_PROPOSTAS, ID.unique(), {
-      titulo: title,
-      descricao: description,
-      setor: senderSector,
-      authorSetor: senderSector,
-      setorDestino: target,
+      titulo: title || "",
+      descricao: description || "",
+      setor: senderSector || "",
+      authorSetor: senderSector || "",
+      setorDestino: target || "",
       status: statuses.PENDENTE,
       data: now,
-      pdfUri,
-      pdfStoragePath,
-      uidCriador,
+      pdfUri: pdfUri || "",
+      pdfStoragePath: pdfStoragePath || null,
+      uidCriador: uidCriador || "",
     });
 
     await databases.createDocument(DB_ID, COL_NOTIFICACOES, ID.unique(), {
@@ -312,15 +314,23 @@ function eq(a, b) {
 
 export async function getReceived(sector, { page = 1, pageSize = 10 } = {}) {
   console.log("[api.getReceived] filtros", { setorDestino: sector, page, pageSize });
+  const isRH = String(sector || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === "rh";
+  const isPecas = String(sector || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === "pecas";
+
   const baseFilters = [
     Query.equal("setorDestino", sector),
     Query.limit(pageSize),
     Query.offset(Math.max(0, (page - 1) * pageSize))
   ];
-  const isRH = String(sector || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === "rh";
+
   if (isRH) {
     baseFilters.push(Query.notEqual("authorSetor", "Peças"));
   }
+  if (isPecas) {
+    // Peças não vê documentos enviados pelo RH
+    baseFilters.push(Query.notEqual("authorSetor", "RH"));
+  }
+
   const primary = await databases.listDocuments(DB_ID, COL_PROPOSTAS, baseFilters);
   const primaryDocs = primary.documents.map(mapDoc);
   console.log("[api.getReceived] primary docs", primaryDocs.map(d => ({ id: d.id, setorDestino: d.targetSector, setor: d.senderSector, status: d.status })));
@@ -340,6 +350,7 @@ export async function getReceived(sector, { page = 1, pageSize = 10 } = {}) {
     const alt2 = d.destino || "";
     if (!(eq(dest, sector) || eq(alt1, sector) || eq(alt2, sector))) return false;
     if (isRH && eq(d.senderSector || "", "Peças")) return false;
+    if (isPecas && eq(d.senderSector || "", "RH")) return false;
     return true;
   });
   const total = filtered.length;
@@ -489,7 +500,7 @@ export async function updateProfile({ sector, name, avatar }) {
   let updatedExtras = null;
   let avatarRef = null;
   try {
-    const currentExtras = await getOrCreateUserExtras(acc.$id);
+    const currentExtras = await getOrCreateUserExtras(acc.$id, acc.email);
     if (avatar && typeof avatar !== "string" && BUCKET_ID) {
       const fileDoc = await storage.createFile(BUCKET_ID, ID.unique(), avatar);
       avatarRef = fileDoc.$id;
@@ -578,7 +589,7 @@ function addDays(date, days) {
 
 export async function createInvite({ email, empresa, setor, dias = 7 }) {
   if (!COL_CONVITES) throw new Error("Coleção de convites não configurada");
-  const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   const gen = (len = 6) => Array.from({ length: len }, () => CHARS[Math.floor(Math.random() * CHARS.length)]).join("");
   let token = gen(6);
   // Garante unicidade do token com algumas tentativas
@@ -594,8 +605,6 @@ export async function createInvite({ email, empresa, setor, dias = 7 }) {
     email,
     empresa,
     setor,
-    // Compatibilidade com esquemas antigos: envia string vazia se o campo existir como obrigatório
-    cargo: "",
     usado: false,
     criadoEm: nowMs,
     expiraEm: expiraMs
@@ -611,7 +620,7 @@ export async function validateInvite(token) {
   if (inv.usado) throw new Error("Convite já utilizado");
   const expInt = typeof inv.expiraEm === "string" ? parseInt(inv.expiraEm, 10) : inv.expiraEm;
   if (expInt && Number(expInt) < Date.now()) throw new Error("Convite expirado");
-  return { id: inv.$id, token: inv.token, email: inv.email, empresa: inv.empresa, setor: inv.setor, cargo: inv.cargo, expiraEm: inv.expiraEm };
+  return { id: inv.$id, token: inv.token, email: inv.email, empresa: inv.empresa, setor: inv.setor, expiraEm: inv.expiraEm };
 }
 
 async function sha256Hex(s) {
