@@ -59,14 +59,22 @@ async function getAccount() {
 }
 
 async function createEmailPasswordSessionCompat(email, password) {
-  try {
-    return await account.createEmailPasswordSession(email, password);
-  } catch (err) {
-    if (typeof account.createEmailSession === "function") {
-      return await account.createEmailSession(email, password);
+  const fn = account.createEmailPasswordSession;
+  if (typeof fn === "function") {
+    try {
+      // Try positional
+      return await fn.call(account, email, password);
+    } catch {
+      // Try object form
+      try {
+        return await fn.call(account, { email, password });
+      } catch {}
     }
-    throw err;
   }
+  if (typeof account.createEmailSession === "function") {
+    return await account.createEmailSession(email, password);
+  }
+  throw new Error("Sessão por e-mail não suportada pela versão do SDK");
 }
 
 async function createAccountCompat({ email, password, name }) {
@@ -106,7 +114,7 @@ async function updateVerificationCompat(userId, secret) {
   throw new Error("Atualização de verificação não suportada");
 }
 
-async function getOrCreateUserExtras(userId, email = "") {
+async function getOrCreateUserExtras(userId) {
   try {
     const doc = await databases.getDocument(DB_ID, COL_USUARIOS, userId);
     return doc;
@@ -116,13 +124,10 @@ async function getOrCreateUserExtras(userId, email = "") {
         uid: userId,
         setor: "",
         nome: "",
-        email: email || "",
-        isAdmin: false,
-        status: "aprovado"
+        isAdmin: false
       });
       return created;
-    } catch (err) {
-      console.error("[api.getOrCreateUserExtras] Erro ao criar documento de usuário:", err);
+    } catch {
       return null;
     }
   }
@@ -131,17 +136,18 @@ async function getOrCreateUserExtras(userId, email = "") {
 export async function getUser() {
   const acc = await getAccount();
   if (!acc) return null;
-  const extras = await getOrCreateUserExtras(acc.$id, acc.email);
+  const extras = await getOrCreateUserExtras(acc.$id);
   const avatarRef = extras?.avatar || extras?.fotoStoragePath || extras?.caminhoDeArmazenamentoDeFotos || null;
   let avatarUrl = null;
   if (avatarRef) {
     const s = String(avatarRef || "");
     avatarUrl = /^https?:\/\//i.test(s) ? s : (BUCKET_ID ? storage.getFileView(BUCKET_ID, s).href : s);
   }
+  const sectorByEmail = sectorFromEmail(acc.email);
   return {
     uid: acc.$id,
     email: acc.email || extras?.email || "",
-    sector: extras?.setor || "",
+    sector: extras?.setor || sectorByEmail || "",
     name: extras?.nome || acc.name || "",
     avatar: avatarUrl
   };
@@ -159,10 +165,10 @@ export async function logout() {
 
 function sectorToEmail(sector) {
   let email = sectorEmails[sector];
-  if (email) {
-    if (Array.isArray(email)) email = email[0];
-    return String(email || "").trim();
+  if (Array.isArray(email)) {
+    email = email.find((v) => v && String(v).trim());
   }
+  if (email) return String(email).trim();
   const base = String(sector || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, "");
   return `${base}@setorlink.local`;
 }
@@ -171,9 +177,9 @@ function sectorFromEmail(email) {
   const e = String(email || "").trim().toLowerCase();
   for (const [sec, em] of Object.entries(sectorEmails)) {
     if (Array.isArray(em)) {
-      if (em.some(addr => String(addr).trim().toLowerCase() === e)) return sec;
+      if (em.some((v) => String(v || "").trim().toLowerCase() === e)) return sec;
     } else {
-      if (String(em).trim().toLowerCase() === e) return sec;
+      if (String(em || "").trim().toLowerCase() === e) return sec;
     }
   }
   return null;
@@ -191,7 +197,7 @@ export async function login(sector, password) {
     throw new Error("EMAIL_NAO_VERIFICADO");
   }
   try {
-    const extras = await getOrCreateUserExtras(acc.$id, acc.email);
+    const extras = await getOrCreateUserExtras(acc.$id);
     if (!extras?.setor || extras.setor !== sector) {
       await databases.updateDocument(DB_ID, COL_USUARIOS, acc.$id, {
         setor: sector,
@@ -205,8 +211,15 @@ export async function login(sector, password) {
   return user;
 }
 
-export async function resendVerification(redirect = `${VITE_CANONICAL_URL || ""}/verify`) {
-  await createVerificationCompat(redirect);
+export async function resendVerification(redirect) {
+  let base = VITE_CANONICAL_URL || "";
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const isLocalCanonical = /^(https?:\/\/)?(localhost|127\.0\.0\.1)/i.test(String(VITE_CANONICAL_URL || ""));
+  if (isLocalCanonical && origin && origin !== VITE_CANONICAL_URL) {
+    base = origin;
+  }
+  const url = redirect || `${base}/verify`;
+  await createVerificationCompat(url);
   return true;
 }
 
@@ -227,7 +240,7 @@ export async function loginByEmail(email, password) {
   }
   // Garante doc de usuário e que email esteja gravado
   try {
-    const extras = await getOrCreateUserExtras(acc.$id, acc.email);
+    const extras = await getOrCreateUserExtras(acc.$id);
     const sec = sectorFromEmail(acc.email);
     const payload = {};
     if (!extras?.email || extras.email !== acc.email) payload.email = acc.email;
@@ -256,12 +269,10 @@ export async function sendDocument({
   const now = new Date().toISOString();
   const targets = Array.isArray(targetSector) ? targetSector : [targetSector];
   let pdfUri = null;
-  let pdfStoragePath = null;
 
   if (file && BUCKET_ID) {
     const fileDoc = await storage.createFile(BUCKET_ID, ID.unique(), file);
-    pdfStoragePath = fileDoc.$id;
-    pdfUri = storage.getFileView(BUCKET_ID, fileDoc.$id).href;
+    pdfUri = fileDoc.$id;
   } else {
     pdfUri = fileData || null;
   }
@@ -272,16 +283,15 @@ export async function sendDocument({
 
   for (const target of targets) {
     const doc = await databases.createDocument(DB_ID, COL_PROPOSTAS, ID.unique(), {
-      titulo: title || "",
-      descricao: description || "",
-      setor: senderSector || "",
-      authorSetor: senderSector || "",
-      setorDestino: target || "",
+      titulo: title,
+      descricao: description,
+      setor: senderSector,
+      authorSetor: senderSector,
+      setorDestino: target,
       status: statuses.PENDENTE,
       data: now,
-      pdfUri: pdfUri || "",
-      pdfStoragePath: pdfStoragePath || null,
-      uidCriador: uidCriador || "",
+      pdfUri,
+      uidCriador
     });
 
     await databases.createDocument(DB_ID, COL_NOTIFICACOES, ID.unique(), {
@@ -314,24 +324,11 @@ function eq(a, b) {
 
 export async function getReceived(sector, { page = 1, pageSize = 10 } = {}) {
   console.log("[api.getReceived] filtros", { setorDestino: sector, page, pageSize });
-  const isRH = String(sector || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === "rh";
-  const isPecas = String(sector || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === "pecas";
-
-  const baseFilters = [
+  const primary = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
     Query.equal("setorDestino", sector),
     Query.limit(pageSize),
     Query.offset(Math.max(0, (page - 1) * pageSize))
-  ];
-
-  if (isRH) {
-    baseFilters.push(Query.notEqual("authorSetor", "Peças"));
-  }
-  if (isPecas) {
-    // Peças não vê documentos enviados pelo RH
-    baseFilters.push(Query.notEqual("authorSetor", "RH"));
-  }
-
-  const primary = await databases.listDocuments(DB_ID, COL_PROPOSTAS, baseFilters);
+  ]);
   const primaryDocs = primary.documents.map(mapDoc);
   console.log("[api.getReceived] primary docs", primaryDocs.map(d => ({ id: d.id, setorDestino: d.targetSector, setor: d.senderSector, status: d.status })));
   if (primaryDocs.length > 0) {
@@ -348,10 +345,7 @@ export async function getReceived(sector, { page = 1, pageSize = 10 } = {}) {
     const dest = d.targetSector || "";
     const alt1 = d.setorDestino || "";
     const alt2 = d.destino || "";
-    if (!(eq(dest, sector) || eq(alt1, sector) || eq(alt2, sector))) return false;
-    if (isRH && eq(d.senderSector || "", "Peças")) return false;
-    if (isPecas && eq(d.senderSector || "", "RH")) return false;
-    return true;
+    return eq(dest, sector) || eq(alt1, sector) || eq(alt2, sector);
   });
   const total = filtered.length;
   const start = Math.max(0, (page - 1) * pageSize);
@@ -362,21 +356,20 @@ export async function getReceived(sector, { page = 1, pageSize = 10 } = {}) {
 
 export async function getSent(sector, hidden = [], { page = 1, pageSize = 10 } = {}) {
   console.log("[api.getSent] filtros", { authorSetor: sector, hidden, page, pageSize });
-  const acc = await getAccount();
-  const isRH = String(sector || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === "rh";
-  const filters = [Query.equal("authorSetor", sector), Query.limit(1000)];
-  if (isRH && acc?.$id) filters.push(Query.equal("uidCriador", acc.$id));
-  const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, filters);
+  const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
+    Query.equal("authorSetor", sector),
+    Query.limit(1000)
+  ]);
   let all = res.documents.map(mapDoc);
   if (all.length === 0) {
-    const fb = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [Query.limit(1000)]);
+    const fb = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
+      Query.limit(1000)
+    ]);
     all = fb.documents.map(mapDoc).filter(d => {
       const author = d.senderSector || "";
       const alt1 = d.authorSetor || "";
       const alt2 = d.setor || "";
-      const bySector = eq(author, sector) || eq(alt1, sector) || eq(alt2, sector);
-      const byUid = !isRH || (acc?.$id ? d.uidCriador === acc.$id : true);
-      return bySector && byUid;
+      return eq(author, sector) || eq(alt1, sector) || eq(alt2, sector);
     });
   }
   all = all.filter(d => {
@@ -403,9 +396,16 @@ export async function evaluateDocument(id, status, reviewerSector, reason) {
   if (normalizeStatus(current.status) !== statuses.PENDENTE) {
     throw new Error("Documento já avaliado");
   }
-  const acc = await getAccount();
-  if (acc?.$id && current.uidCriador === acc.$id) {
-    throw new Error("Você não pode avaliar um documento que você criou");
+  const author = current.authorSetor || current.setor || "";
+  const destino = current.setorDestino || current.destino || current.targetSector || "";
+  if (reviewerSector === "RH") {
+    throw new Error("RH não pode avaliar documentos");
+  }
+  if (reviewerSector === "Peças") {
+    if (destino !== "Peças") throw new Error("Peças só pode avaliar documentos destinados a Peças");
+    if (author === "Peças") throw new Error("Peças não pode avaliar documento que ele mesmo enviou");
+  } else {
+    if (destino !== reviewerSector) throw new Error("Setor só pode avaliar documentos destinados ao próprio setor");
   }
 
   const update = await databases.updateDocument(DB_ID, COL_PROPOSTAS, id, {
@@ -434,9 +434,21 @@ export async function deleteDocumentIfPending(id) {
   }
 
   const acc = await getAccount();
-  const creatorField = current.uidCriador || "";
-  if (!acc || !creatorField || creatorField !== acc.$id) {
-    throw new Error("Você só pode excluir documentos que você enviou");
+  const extras = await getOrCreateUserExtras(acc.$id);
+  const userSector = extras?.setor || "";
+  const docAuthor = current.authorSetor || current.setor || "";
+
+  if (userSector !== docAuthor) {
+    throw new Error("Um setor não pode excluir documentos enviados por outro setor");
+  }
+  if (userSector === "RH" && docAuthor === "Peças") {
+    throw new Error("RH não tem permissão para excluir documentos de Peças");
+  }
+  if (userSector === "Peças" && docAuthor === "RH") {
+    throw new Error("Peças não tem permissão para excluir documentos do RH");
+  }
+  if (userSector !== "RH" && userSector !== "Peças") {
+    throw new Error("Setores comuns não possuem permissão de exclusão");
   }
 
   await databases.deleteDocument(DB_ID, COL_PROPOSTAS, id);
@@ -456,8 +468,7 @@ export async function getNotifications(sector) {
   const res = await databases.listDocuments(DB_ID, COL_NOTIFICACOES, [
     Query.equal("destinatarioSetor", sector)
   ]);
-
-  return res.documents.map(n => ({
+  const base = res.documents.map(n => ({
     id: n.$id,
     documentId: n.propostaId,
     title: n.titulo,
@@ -466,6 +477,18 @@ export async function getNotifications(sector) {
     status: n.tipo,
     newStatus: n.tipo
   }));
+  const updated = await Promise.all(
+    base.map(async (n) => {
+      try {
+        const d = await databases.getDocument(DB_ID, COL_PROPOSTAS, n.documentId);
+        const cur = normalizeStatus(d.status);
+        return { ...n, newStatus: cur };
+      } catch {
+        return n;
+      }
+    })
+  );
+  return updated;
 }
 
 export async function clearNotifications(sector) {
@@ -500,7 +523,7 @@ export async function updateProfile({ sector, name, avatar }) {
   let updatedExtras = null;
   let avatarRef = null;
   try {
-    const currentExtras = await getOrCreateUserExtras(acc.$id, acc.email);
+    const currentExtras = await getOrCreateUserExtras(acc.$id);
     if (avatar && typeof avatar !== "string" && BUCKET_ID) {
       const fileDoc = await storage.createFile(BUCKET_ID, ID.unique(), avatar);
       avatarRef = fileDoc.$id;
@@ -528,22 +551,27 @@ export async function updateProfile({ sector, name, avatar }) {
 }
 
 export async function updatePassword({ currentPassword, newPassword }) {
-  await account.updatePassword(newPassword, currentPassword);
+  const np = String(newPassword || "").trim();
+  if (np === "12345678") {
+    throw new Error("SENHA_FRACA");
+  }
+  await account.updatePassword(np, currentPassword);
   return true;
 }
 
 export async function getStats(sector, { source = "received" } = {}) {
-  const acc = await getAccount();
-  const isRH = String(sector || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === "rh";
-  const base = source === "received" ? Query.equal("setorDestino", sector) : Query.equal("authorSetor", sector);
-  const extra = source === "sent" && isRH && acc?.$id ? [Query.equal("uidCriador", acc.$id)] : [];
-  const p = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [base, ...extra, Query.equal("status", statuses.PENDENTE)]);
-  const a = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [base, ...extra, Query.equal("status", statuses.APROVADO)]);
-  const r = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [base, ...extra, Query.equal("status", statuses.REPROVADO)]);
-  const tp = typeof p.total === "number" ? p.total : p.documents.length;
-  const ta = typeof a.total === "number" ? a.total : a.documents.length;
-  const tr = typeof r.total === "number" ? r.total : r.documents.length;
-  return { pending: tp, approved: ta, rejected: tr };
+  try {
+    const base = source === "received" ? Query.equal("setorDestino", sector) : Query.equal("authorSetor", sector);
+    const p = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [base, Query.equal("status", statuses.PENDENTE)]);
+    const a = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [base, Query.equal("status", statuses.APROVADO)]);
+    const r = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [base, Query.equal("status", statuses.REPROVADO)]);
+    const tp = typeof p.total === "number" ? p.total : p.documents.length;
+    const ta = typeof a.total === "number" ? a.total : a.documents.length;
+    const tr = typeof r.total === "number" ? r.total : r.documents.length;
+    return { pending: tp, approved: ta, rejected: tr };
+  } catch {
+    return { pending: 0, approved: 0, rejected: 0 };
+  }
 }
 
 /* ================================
@@ -557,11 +585,10 @@ function mapDoc(d) {
     description: d.descricao || "",
     senderSector: d.authorSetor,
     targetSector: d.setorDestino,
-    fileData: d.pdfUri || d.pdfStoragePath || null,
+    fileData: d.pdfUri || null,
     date: d.data,
     status: d.status,
-    reason: d.motivoRecusa || null,
-    uidCriador: d.uidCriador || null
+    reason: d.motivoRecusa || null
   };
 }
 
@@ -589,7 +616,7 @@ function addDays(date, days) {
 
 export async function createInvite({ email, empresa, setor, dias = 7 }) {
   if (!COL_CONVITES) throw new Error("Coleção de convites não configurada");
-  const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   const gen = (len = 6) => Array.from({ length: len }, () => CHARS[Math.floor(Math.random() * CHARS.length)]).join("");
   let token = gen(6);
   // Garante unicidade do token com algumas tentativas
@@ -636,19 +663,22 @@ export async function acceptInvite({ token, email, password, name }) {
   await createEmailPasswordSessionCompat(email, password);
   const acc = await getAccount();
   if (!acc) throw new Error("Falha ao iniciar sessão");
-  const senhaHash = await sha256Hex(password);
   try {
     await databases.createDocument(DB_ID, COL_USUARIOS, acc.$id, {
       uid: acc.$id,
       email,
       nome: name || "",
       setor: inv.setor,
-      senhaHash,
-      isAdmin: inv.setor === "RH",
-      status: "aprovado"
+      isAdmin: inv.setor === "RH"
     });
   } catch {}
-  await createVerificationCompat(`${VITE_CANONICAL_URL || ""}/verify`);
+  let base = VITE_CANONICAL_URL || "";
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const isLocalCanonical = /^(https?:\/\/)?(localhost|127\.0\.0\.1)/i.test(String(VITE_CANONICAL_URL || ""));
+  if (isLocalCanonical && origin && origin !== VITE_CANONICAL_URL) {
+    base = origin;
+  }
+  await createVerificationCompat(`${base}/verify`);
   await markInviteUsed(inv.id);
   return true;
 }

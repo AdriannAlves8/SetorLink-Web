@@ -9,8 +9,18 @@ export default function VerifyEmail() {
 
   useEffect(() => {
     const url = new URL(window.location.href);
-    const userId = url.searchParams.get("userId") || url.searchParams.get("user") || "";
-    const secret = url.searchParams.get("secret") || "";
+    let userId = url.searchParams.get("userId") || url.searchParams.get("user") || "";
+    let secret = url.searchParams.get("secret") || "";
+    if (!userId || !secret) {
+      const wrapped = url.searchParams.get("link");
+      if (wrapped) {
+        try {
+          const inner = new URL(wrapped);
+          userId = inner.searchParams.get("userId") || inner.searchParams.get("user") || userId;
+          secret = inner.searchParams.get("secret") || secret;
+        } catch {}
+      }
+    }
     if (!userId || !secret) {
       setMsg("Link inválido.");
       setDone(true);

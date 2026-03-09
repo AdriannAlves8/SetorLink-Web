@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Routes,
   Route,
@@ -17,6 +17,7 @@ import Profile from "../pages/Profile.jsx";
 import ResetPassword from "../pages/ResetPassword.jsx";
 import Alert from "../components/Alert.jsx";
 import Sidebar from "../components/Sidebar.jsx";
+import { LogoutIcon } from "../components/Icons.jsx";
 import DocumentDetail from "../pages/DocumentDetail.jsx";
 import GenerateInvite from "../pages/GenerateInvite.jsx";
 import AcceptInvite from "../pages/AcceptInvite.jsx";
@@ -27,7 +28,7 @@ function Protected({ children, permission }) {
   const location = useLocation();
 
   if (loading) return <div style={{ padding: 24 }}>Carregando...</div>;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
   if (permission && !can(permission)) return <Navigate to="/" replace />;
 
   return children;
@@ -43,6 +44,14 @@ function Layout({ children }) {
     logout();
     navigate("/login");
   };
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") setConfirmLogout(false);
+    };
+    if (confirmLogout) window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirmLogout]);
 
   return (
     <div className={`app ${sidebarOpen ? "with-sidebar" : "no-sidebar"}`}>
@@ -82,20 +91,21 @@ function Layout({ children }) {
 
       {confirmLogout && (
         <div className="modal-overlay" onClick={() => setConfirmLogout(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>
-              Tem certeza que deseja sair?
+          <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <div className="card-header">
+              <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span className="nav-ico-svg"><LogoutIcon /></span>
+                Sair da conta
+              </div>
             </div>
-            <div className="actions">
-              <button
-                className="btn"
-                onClick={() => setConfirmLogout(false)}
-              >
-                Cancelar
-              </button>
-              <button className="btn danger" onClick={doLogout}>
-                Confirmar
-              </button>
+            <div className="stack">
+              <div style={{ color: "var(--muted)" }}>
+                Tem certeza que deseja sair? Você precisará entrar novamente.
+              </div>
+              <div className="actions" style={{ justifyContent: "flex-end" }}>
+                <button className="btn" onClick={() => setConfirmLogout(false)}>Cancelar</button>
+                <button className="btn danger" onClick={doLogout}>Confirmar</button>
+              </div>
             </div>
           </div>
         </div>

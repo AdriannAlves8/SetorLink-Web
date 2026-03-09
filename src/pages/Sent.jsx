@@ -181,7 +181,7 @@ export default function Sent({ compose = true }) {
 
       {/* ---------------- COMPOSE ---------------- */}
       {compose && can("send") && (
-        <form className="form" onSubmit={send}>
+        <form className="form stack" onSubmit={send}>
           <div className="form-row">
             <label>Arquivo</label>
             <input type="file" onChange={onFile} />
@@ -283,16 +283,10 @@ export default function Sent({ compose = true }) {
                       </span>
                     </td>
                     <td>
-                      <NavLink
-                        className="btn"
-                        to={`/documento/${d.id}`}
-                      >
-                        Detalhes
-                      </NavLink>
+                      <NavLink className="btn" to={`/documento/${d.id}`}>Detalhes</NavLink>
 
                       {normalizeStatus(d.status) === statuses.PENDENTE &&
-                        can("delete_if_pending") &&
-                        d.uidCriador === user.uid && (
+                        can("delete_if_pending") && (
                           <button
                             className="btn danger"
                             onClick={() => remove(d.id)}

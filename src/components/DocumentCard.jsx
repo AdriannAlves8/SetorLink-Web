@@ -2,10 +2,10 @@ import React from "react";
 import { NavLink } from "react-router-dom";
 import { statusClass, normalizeStatus } from "../utils/constants.js";
 
-export default function DocumentCard({ title, status, meta1, meta2, actionLabel, actionTo }) {
+export default function DocumentCard({ title, status, meta1, meta2, actionLabel, actionTo, className }) {
   const cls = statusClass(status);
   return (
-    <div className="doc-card">
+    <div className={`doc-card ${className || ""}`}>
       <div className="dc-content">
         <div className="dc-title">{title}</div>
         <div className="dc-meta">

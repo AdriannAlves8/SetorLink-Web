@@ -15,7 +15,7 @@ export default function SummaryCard({ color, title, value, buttonText, buttonTo 
       <div className="summary-value">{value}</div>
       {buttonText && buttonTo && (
         <div className="summary-actions">
-          <NavLink className="btn" to={buttonTo}>{buttonText}</NavLink>
+          <NavLink className="btn primary small" to={buttonTo}>{buttonText}</NavLink>
         </div>
       )}
     </div>

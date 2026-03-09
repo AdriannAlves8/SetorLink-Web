@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { sectors } from "../utils/constants.js";
 import * as api from "../services/api.js";
@@ -8,6 +8,7 @@ import Logo from "../components/Logo.jsx";
 export default function Login() {
   const { login, loginEmail } = useAuth();
   const nav = useNavigate();
+  const loc = useLocation();
   const [sector, setSector] = useState(sectors[0]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21,6 +22,10 @@ export default function Login() {
     setError(null);
     setLoading(true);
     try {
+      const insecure = String(password || "").trim() === "12345678";
+      if (insecure) {
+        localStorage.setItem("setorlink.forcePwdChange", "1");
+      }
       if (useEmail) {
         await loginEmail(email, password);
       } else {
@@ -30,7 +35,12 @@ export default function Login() {
         const token = localStorage.getItem("setorlink.pushToken") || localStorage.getItem("fcmToken");
         if (token) await api.setUserPushToken(token);
       } catch {}
-      nav("/");
+      const from = (loc.state && loc.state.from) ? loc.state.from : "/";
+      if (String(password || "").trim() === "12345678") {
+        nav("/perfil", { replace: true });
+      } else {
+        nav(from, { replace: true });
+      }
     } catch (err) {
       setError(err.message || "Erro ao logar");
     } finally {
@@ -141,7 +151,14 @@ export default function Login() {
               )}
             </div>
           )}
-          <button className="btn primary" type="submit" disabled={loading}>
+          <button
+            className="btn primary"
+            type="submit"
+            disabled={
+              loading ||
+              (useEmail ? (email.trim() === "" || password.trim() === "") : (String(sector || "").trim() === "" || password.trim() === ""))
+            }
+          >
             {loading ? "Entrando..." : "Entrar"}
           </button>
         </form>

@@ -53,10 +53,12 @@ export default function Dashboard() {
     window.addEventListener("storage", onStorage);
 
     const onVisibilityChange = async () => {
-      if (document.visibilityState === "visible") {
+      if (document.visibilityState !== "visible") return;
+      if (!user || !user.sector) return;
+      try {
         const st = await api.getStats(user.sector, { source: can("view_received") ? "received" : "sent" });
         setStats(st);
-      }
+      } catch {}
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
 
@@ -73,6 +75,17 @@ export default function Dashboard() {
   return (
     <>
       <Header title="Dashboard" user={user} />
+      <div className="dashboard-hero">
+        <div className="hero-content">
+          <div className="hero-title">Olá, {user.name || user.sector}</div>
+          <div className="hero-subtitle">Aqui está um resumo do seu dia</div>
+          <div className="hero-actions">
+            {can("send") && <NavLink className="btn primary" to="/enviar">Enviar Documento</NavLink>}
+            {can("view_received") && <NavLink className="btn" to="/recebidos">Ver Recebidos</NavLink>}
+            {can("view_sent") && <NavLink className="btn" to="/enviados">Ver Enviados</NavLink>}
+          </div>
+        </div>
+      </div>
       <div className="grid">
         <SummaryCard color="orange" title="Pendentes" value={pendingCount} buttonText={can("view_received") ? "Ver recebidos" : undefined} buttonTo="/recebidos" />
         <SummaryCard color="green" title="Aprovados" value={approvedCount} />
@@ -81,19 +94,34 @@ export default function Dashboard() {
           <div className="card col-12">
             <div className="card-header">
               <div className="card-title">Recebidos Recentes</div>
+              <NavLink className="btn small" to="/recebidos">Ver todos</NavLink>
             </div>
             <div className="doc-grid">
-              {[...received].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,6).map(d => (
-                <DocumentCard
-                  key={d.id}
-                  title={d.title}
-                  status={d.status}
-                  meta1={`De: ${d.senderSector}`}
-                  meta2={new Date(d.date).toLocaleString()}
-                  actionLabel={normalizeStatus(d.status) === statuses.PENDENTE && can("evaluate") && d.uidCriador !== user.uid ? "Avaliar" : "Detalhes"}
-                  actionTo={normalizeStatus(d.status) === statuses.PENDENTE && can("evaluate") && d.uidCriador !== user.uid ? `/avaliar/${d.id}` : `/documento/${d.id}`}
-                />
-              ))}
+              {[...received].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,6).map(d => {
+                const isPending = normalizeStatus(d.status) === statuses.PENDENTE;
+                const canEvaluateDoc = (() => {
+                  if (!isPending) return false;
+                  if (user.sector === "RH") return false;
+                  if (user.sector === "Peças") {
+                    return d.targetSector === "Peças" && d.senderSector !== "Peças";
+                  }
+                  return d.targetSector === user.sector;
+                })();
+                const label = isPending && canEvaluateDoc ? "Avaliar" : "Detalhes";
+                const to = isPending && canEvaluateDoc ? `/avaliar/${d.id}` : `/documento/${d.id}`;
+                return (
+                  <DocumentCard
+                    key={d.id}
+                    title={d.title}
+                    status={d.status}
+                    meta1={`De: ${d.senderSector}`}
+                    meta2={new Date(d.date).toLocaleString()}
+                    actionLabel={label}
+                    actionTo={to}
+                    className="col-6"
+                  />
+                );
+              })}
               {received.length === 0 && <div style={{ color: "var(--color-muted)" }}>Sem documentos</div>}
             </div>
           </div>
@@ -102,6 +130,7 @@ export default function Dashboard() {
           <div className="card col-12">
             <div className="card-header">
               <div className="card-title">Enviados Recentes</div>
+              <NavLink className="btn small" to="/enviados">Ver todos</NavLink>
             </div>
             <div className="doc-grid">
               {[...sent].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,6).map(d => (
@@ -111,8 +140,9 @@ export default function Dashboard() {
                   status={d.status}
                   meta1={`Para: ${d.targetSector}`}
                   meta2={new Date(d.date).toLocaleString()}
-                  actionLabel={normalizeStatus(d.status) === statuses.PENDENTE ? "Avaliar" : "Detalhes"}
+                  actionLabel={"Detalhes"}
                   actionTo={`/documento/${d.id}`}
+                  className="col-6"
                />
               ))}
               {sent.length === 0 && <div style={{ color: "var(--color-muted)" }}>Sem documentos</div>}

@@ -24,12 +24,14 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = async (sector, password) => {
-    const u = await api.login(sector, password);
+    await api.login(norm(sector), password);
+    const u = await api.getUser();
     setUser(u);
     return u;
   };
   const loginEmail = async (email, password) => {
-    const u = await api.loginByEmail(email, password);
+    await api.loginByEmail(email, password);
+    const u = await api.getUser();
     setUser(u);
     return u;
   };
@@ -62,8 +64,8 @@ export function AuthProvider({ children }) {
     if (!user) return false;
     const sectorKey = deriveSector();
     const rules = acl[sectorKey] || {};
-    // RH como administrador: garante permissões principais mesmo se regras não carregarem
-    if (sectorKey === "RH") {
+    // Setores privilegiados têm permissões garantidas
+    if (isPrivilegedSector(sectorKey)) {
       const adminPerms = new Set(["send","view_sent","notifications","reset_password","generate_invite"]);
       if (adminPerms.has(permission)) return true;
     }

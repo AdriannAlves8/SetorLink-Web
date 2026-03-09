@@ -44,7 +44,7 @@ export default function Notifications() {
         <div className="page-title">Notificações</div>
         <div className="notification-badge">{items.length}</div>
       </div>
-      <div className="card col-12">
+      <div className="card col-12 stack">
         {items.length === 0 && <div className="empty">Sem notificações</div>}
         <div className="notif-actions">
           <button className="btn warning small" disabled={loading || items.length === 0} onClick={clear}>Limpar tudo</button>

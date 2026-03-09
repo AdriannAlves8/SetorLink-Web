@@ -7,6 +7,7 @@ export default function DocumentDetail() {
   const { id } = useParams();
   const [doc, setDoc] = useState(null);
   const [openError, setOpenError] = useState(null);
+  const [preview, setPreview] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -31,44 +32,49 @@ export default function DocumentDetail() {
       <div className="content-header">
         <div className="page-title">Detalhes do Documento</div>
       </div>
-      <div className="info-grid">
-        <div className="info-card">
-          <div className="info-title">Título</div>
-          <div className="info-value">{doc.title}</div>
-        </div>
-        <div className="info-card">
-          <div className="info-title">Descrição</div>
-          <div className="info-value">{doc.description || "-"}</div>
-        </div>
-        <div className="info-card">
-          <div className="info-title">Remetente</div>
-          <div className="info-value">{doc.senderSector}</div>
-        </div>
-        <div className="info-card">
-          <div className="info-title">Destino</div>
-          <div className="info-value">{doc.targetSector}</div>
-        </div>
-        <div className="info-card">
-          <div className="info-title">Data</div>
-          <div className="info-value">{new Date(doc.date).toLocaleString()}</div>
-        </div>
-        <div className="info-card">
-          <div className="info-title">Status</div>
-          <div className="info-value">
-            <span className={`status ${statusClass(doc.status)}`}>{normalizeStatus(doc.status)}</span>
+      <div className="grid">
+        <div className="card col-8">
+          <div className="card-header">
+            <div className="card-title">{doc.title}</div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span className={`status ${statusClass(doc.status)}`}>{normalizeStatus(doc.status)}</span>
+              {doc.fileData ? (
+                <>
+                  <button className="btn" onClick={openFile}>Abrir</button>
+                  <button className="btn" onClick={() => setPreview(p => !p)}>{preview ? "Ocultar prévia" : "Prévia"}</button>
+                </>
+              ) : <span className="chip">Sem arquivo</span>}
+            </div>
           </div>
+          {doc.fileData && preview ? (
+            <iframe
+              title="preview"
+              src={(() => { try { return api.getFileViewUrl(doc.fileData); } catch { return ""; } })()}
+              style={{ width: "100%", height: 360, border: "1px solid var(--border)", borderRadius: 12 }}
+            />
+          ) : (
+            <div className="empty">Selecione Abrir para nova aba ou Prévia compacta</div>
+          )}
+          {openError && <div className="chip" style={{ color: "var(--red)", marginTop: 8 }}>{openError}</div>}
         </div>
-        {normalizeStatus(doc.status) === statuses.REPROVADO && doc.reason && (
-          <div className="info-card">
-            <div className="info-title">Motivo da reprovação</div>
-            <div className="info-value">{doc.reason}</div>
+        <div className="card col-4">
+          <div className="card-header">
+            <div className="card-title">Informações</div>
           </div>
-        )}
-        <div className="info-card">
-          <div className="info-title">Arquivo</div>
-          <div className="info-value">
-            {doc.fileData ? <button className="btn" onClick={openFile}>Abrir arquivo</button> : <span className="chip">Sem arquivo</span>}
-            {openError && <span className="chip" style={{ color: "var(--red)", marginLeft: 8 }}>{openError}</span>}
+          <div className="stack">
+            <div className="chip">Remetente: {doc.senderSector}</div>
+            <div className="chip">Destino: {doc.targetSector}</div>
+            <div className="chip">Data: {new Date(doc.date).toLocaleString()}</div>
+            <div className="stack">
+              <div style={{ fontWeight: 700 }}>Descrição</div>
+              <div>{doc.description || "-"}</div>
+            </div>
+            {normalizeStatus(doc.status) === statuses.REPROVADO && doc.reason && (
+              <div className="stack">
+                <div style={{ fontWeight: 700 }}>Motivo da reprovação</div>
+                <div>{doc.reason}</div>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -42,7 +42,10 @@ export default function Received() {
         <div className="chip">{user.sector}</div>
       </div>
       <StatusFilter value={filter} onChange={setFilter} />
-      <div className="card col-12">
+      <div className="card col-12 stack">
+        <div className="card-header">
+          <div className="card-title">Documentos recebidos</div>
+        </div>
         <table className="table">
           <thead>
             <tr>
@@ -59,8 +62,17 @@ export default function Received() {
                   <span className={`status ${statusClass(d.status)}`}>{normalizeStatus(d.status)}</span>
                 </td>
                 <td>
-                  {normalizeStatus(d.status) === statuses.PENDENTE && can("evaluate") && d.uidCriador !== user.uid ? (
-                    <NavLink className="btn" to={`/avaliar/${d.id}`}>Avaliar</NavLink>
+                  {normalizeStatus(d.status) === statuses.PENDENTE ? (
+                    (user.sector === "RH")
+                      ? <NavLink className="btn" to={`/documento/${d.id}`}>Detalhes</NavLink>
+                      : (user.sector === "Peças"
+                          ? (d.targetSector === "Peças" && d.senderSector !== "Peças"
+                              ? <NavLink className="btn" to={`/avaliar/${d.id}`}>Avaliar</NavLink>
+                              : <NavLink className="btn" to={`/documento/${d.id}`}>Detalhes</NavLink>)
+                          : (d.targetSector === user.sector
+                              ? <NavLink className="btn" to={`/avaliar/${d.id}`}>Avaliar</NavLink>
+                              : <NavLink className="btn" to={`/documento/${d.id}`}>Detalhes</NavLink>)
+                        )
                   ) : (
                     <NavLink className="btn" to={`/documento/${d.id}`}>Detalhes</NavLink>
                   )}

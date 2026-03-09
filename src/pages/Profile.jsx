@@ -1,51 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNavigate } from "react-router-dom";
-
-function renameToJpg(name) {
-  const base = name.replace(/\.[^.]+$/, "");
-  return `${base}.jpg`;
-}
-function compressImage(file) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const maxW = 512;
-      const maxH = 512;
-      let w = img.width;
-      let h = img.height;
-      const scale = Math.min(maxW / w, maxH / h, 1);
-      w = Math.round(w * scale);
-      h = Math.round(h * scale);
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0, w, h);
-      const qualities = [0.8, 0.7, 0.6, 0.5];
-      const tryQuality = (i) => {
-        if (i >= qualities.length) {
-          canvas.toBlob((blob) => {
-            if (!blob) return reject(new Error("Falha ao comprimir"));
-            resolve(new File([blob], renameToJpg(file.name), { type: "image/jpeg" }));
-          }, "image/jpeg", qualities[qualities.length - 1]);
-          return;
-        }
-        canvas.toBlob((blob) => {
-          if (!blob) return reject(new Error("Falha ao comprimir"));
-          if (blob.size <= 2 * 1024 * 1024) {
-            resolve(new File([blob], renameToJpg(file.name), { type: "image/jpeg" }));
-          } else {
-            tryQuality(i + 1);
-          }
-        }, "image/jpeg", qualities[i]);
-      };
-      tryQuality(0);
-    };
-    img.onerror = reject;
-    img.src = URL.createObjectURL(file);
-  });
-}
 
 export default function Profile() {
   const { user, updateProfile, updatePassword } = useAuth();
@@ -63,18 +18,20 @@ export default function Profile() {
   const [show2, setShow2] = useState(false);
   const [showOld, setShowOld] = useState(false);
 
+  useEffect(() => {
+    const force = localStorage.getItem("setorlink.forcePwdChange");
+    if (force === "1") {
+      setMsg("Por segurança, altere sua senha agora.");
+      localStorage.removeItem("setorlink.forcePwdChange");
+    }
+  }, []);
+
   const onAvatar = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    compressImage(f).then((cf) => {
-      setAvatarFile(cf);
-      const url = URL.createObjectURL(cf);
-      setAvatarPreview(url);
-    }).catch(() => {
-      setAvatarFile(f);
-      const url = URL.createObjectURL(f);
-      setAvatarPreview(url);
-    });
+    setAvatarFile(f);
+    const url = URL.createObjectURL(f);
+    setAvatarPreview(url);
   };
   const save = async () => {
     if (!name.trim()) { setErr("Informe um nome válido."); return; }
@@ -87,6 +44,7 @@ export default function Profile() {
   const changePassword = async () => {
     if (!oldPwd) { setErr("Informe sua senha atual."); return; }
     if (!pwd || pwd.length < 4) { setErr("Senha deve ter ao menos 4 caracteres."); return; }
+    if (String(pwd || "").trim() === "12345678") { setErr("Escolha uma senha mais forte."); return; }
     if (pwd !== pwd2) { setErr("Senhas não conferem."); return; }
     setLoading(true); setMsg(null); setErr(null);
     await updatePassword({ currentPassword: oldPwd, newPassword: pwd });
@@ -104,10 +62,10 @@ export default function Profile() {
       <div className="card col-12">
         <div className="form">
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            <div style={{ width: 64, height: 64, borderRadius: 12, background: "rgba(255,255,255,0.06)", border: "1px solid var(--color-border)", overflow: "hidden" }}>
-              {avatarPreview ? <img alt="avatar" src={avatarPreview} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", color: "var(--color-muted)" }}>IMG</div>}
+            <div style={{ width: 64, height: 64, borderRadius: 12, background: "rgba(255,255,255,0.06)", border: "1px solid var(--border)", overflow: "hidden" }}>
+              {avatarPreview ? <img alt="avatar" src={avatarPreview} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", color: "var(--muted)" }}>IMG</div>}
             </div>
-            <input type="file" accept="image/*" onChange={onAvatar} />
+            <input type="file" onChange={onAvatar} />
           </div>
           <div className="form-row">
             <label>Nome</label>
@@ -122,28 +80,49 @@ export default function Profile() {
         <div className="form">
           <div className="form-row">
             <label>Senha atual</label>
-            <div style={{ position: "relative" }}>
+            <div className="input-group" style={{ position: "relative" }}>
+              <span className="input-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="7" cy="12" r="3"/><path d="M10 12h10l-2 2 2 2-2 2"/></svg>
+              </span>
               <input type={showOld ? "text" : "password"} value={oldPwd} onChange={(e) => setOldPwd(e.target.value)} placeholder="Digite sua senha atual" />
-              <button type="button" className="btn small" onClick={() => setShowOld(s => !s)} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)" }}>
-                {showOld ? "Ocultar" : "Mostrar"}
+              <button type="button" className="icon-btn" onClick={() => setShowOld(s => !s)} aria-label={showOld ? "Ocultar senha" : "Mostrar senha"} title={showOld ? "Ocultar senha" : "Mostrar senha"} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)" }}>
+                {showOld ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.94 10.94 0 0112 20C7 20 3 16 1 12c.86-1.6 2-3.05 3.34-4.24M9.88 9.88A3 3 0 0114.12 14.12M6.1 6.1L17.9 17.9" /></svg>
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></svg>
+                )}
               </button>
             </div>
           </div>
           <div className="form-row">
             <label>Nova senha</label>
-            <div style={{ position: "relative" }}>
+            <div className="input-group" style={{ position: "relative" }}>
+              <span className="input-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="7" cy="12" r="3"/><path d="M10 12h10l-2 2 2 2-2 2"/></svg>
+              </span>
               <input type={show1 ? "text" : "password"} value={pwd} onChange={(e) => setPwd(e.target.value)} placeholder="Digite a nova senha" />
-              <button type="button" className="btn small" onClick={() => setShow1(s => !s)} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)" }}>
-                {show1 ? "Ocultar" : "Mostrar"}
+              <button type="button" className="icon-btn" onClick={() => setShow1(s => !s)} aria-label={show1 ? "Ocultar senha" : "Mostrar senha"} title={show1 ? "Ocultar senha" : "Mostrar senha"} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)" }}>
+                {show1 ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.94 10.94 0 0112 20C7 20 3 16 1 12c.86-1.6 2-3.05 3.34-4.24M9.88 9.88A3 3 0 0114.12 14.12M6.1 6.1L17.9 17.9" /></svg>
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></svg>
+                )}
               </button>
             </div>
           </div>
           <div className="form-row">
             <label>Confirmar nova senha</label>
-            <div style={{ position: "relative" }}>
+            <div className="input-group" style={{ position: "relative" }}>
+              <span className="input-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="7" cy="12" r="3"/><path d="M10 12h10l-2 2 2 2-2 2"/></svg>
+              </span>
               <input type={show2 ? "text" : "password"} value={pwd2} onChange={(e) => setPwd2(e.target.value)} placeholder="Confirme a nova senha" />
-              <button type="button" className="btn small" onClick={() => setShow2(s => !s)} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)" }}>
-                {show2 ? "Ocultar" : "Mostrar"}
+              <button type="button" className="icon-btn" onClick={() => setShow2(s => !s)} aria-label={show2 ? "Ocultar senha" : "Mostrar senha"} title={show2 ? "Ocultar senha" : "Mostrar senha"} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)" }}>
+                {show2 ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.94 10.94 0 0112 20C7 20 3 16 1 12c.86-1.6 2-3.05 3.34-4.24M9.88 9.88A3 3 0 0114.12 14.12M6.1 6.1L17.9 17.9" /></svg>
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></svg>
+                )}
               </button>
             </div>
           </div>

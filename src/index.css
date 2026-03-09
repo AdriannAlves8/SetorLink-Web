@@ -11,6 +11,9 @@
   --shadow: 0 8px 24px rgba(11,100,244,0.08);
 }
 
+
+
+
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
 body {
@@ -158,16 +161,40 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
   grid-template-columns: repeat(12, 1fr);
   gap: 16px;
 }
+.dashboard-hero {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: var(--shadow);
+  margin-bottom: 16px;
+}
+.hero-content {
+  display: grid;
+  gap: 8px;
+}
+.hero-title {
+  font-weight: 800;
+  font-size: 20px;
+}
+.hero-subtitle {
+  color: var(--muted);
+}
+.hero-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
 .summary-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
-.summary-card { display: grid; gap: 8px; }
-.summary-head { display: flex; align-items: center; gap: 10px; }
-.summary-title { font-weight: 700; }
-.summary-value { font-size: 26px; font-weight: 800; }
-.summary-icon { width: 16px; height: 16px; border-radius: 999px; background: var(--muted); }
+.summary-card { display: grid; gap: 10px; background: linear-gradient(180deg, rgba(11,100,244,0.06), rgba(11,100,244,0.02)); }
+.summary-head { display: flex; align-items: center; gap: 12px; }
+.summary-title { font-weight: 700; font-size: 14px; color: var(--muted); }
+.summary-value { font-size: 32px; font-weight: 800; }
+.summary-icon { width: 24px; height: 24px; border-radius: 999px; background: var(--muted); box-shadow: 0 6px 14px rgba(0,0,0,0.08); }
 .summary-icon.orange { background: var(--orange); }
 .summary-icon.green { background: var(--green); }
 .summary-icon.red { background: var(--red); }
-.summary-actions { display: flex; gap: 12px; justify-content: center; }
+.summary-actions { display: flex; gap: 12px; justify-content: flex-end; }
 .card {
   grid-column: span 12;
   background: var(--surface);
@@ -376,6 +403,15 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
   display: none;
 }
 
+/* Aplicar ocultação também globalmente para inputs fora do login-box */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+input[type="password"]::-webkit-textfield-decoration-container {
+  display: none;
+}
+
 .modal-overlay {
   position: fixed; inset: 0;
   background: rgba(0,0,0,0.6);
@@ -394,7 +430,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .doc-grid {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
-  gap: 12px;
+  gap: 16px;
 }
 .doc-card {
   grid-column: span 12;
@@ -413,12 +449,13 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .dc-content {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   justify-content: center;
 }
 .dc-meta {
   display: flex;
-  gap: 12px;
+  gap: 10px;
+  color: var(--muted);
 }
 .dc-status {
   flex-shrink: 0;

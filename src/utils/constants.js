@@ -21,7 +21,7 @@ export const sectors = [
 export const sectorEmails = {
   "RH": ["aline@gsapori.com.br","gpessoas@gsapori.com.br"],
   "Peças": "thais@poligonofiat.com.br",
-  "TI": "william@gsapori.com.br ",
+  "TI": ["william@gsapori.com.br", "ti@gsapori.com.br"],
   "Funilaria": "funilaria@poligonofiat.com.br",
   "Assistencia Técnica": "samanta@poligonofiat.com.br",
   "Financeiro": "kellen@gsapori.com.br ",
