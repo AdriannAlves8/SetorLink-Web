@@ -3,11 +3,11 @@ export const sectors = [
   "Peças",
   "TI",
   "Funilaria",
-  "Assistencia Técnica",
   "Financeiro",
   "Pós-Vendas",
   "Qualidade",
   "Vendas",
+  "Assistencia Técnica",
   "Diretoria",
   "Marketing",
   "Tráfego Avanti",
@@ -19,23 +19,23 @@ export const sectors = [
 ];
 
 export const sectorEmails = {
-  "RH": "rh@gsapori.com",
-  "Peças": "pecas@gsapori.com",
-  "TI": "ti@gsapori.com",
-  "Funilaria": "funilaria@gsapori.com",
-  "Assistencia Técnica": "assistecnica@gsapori.com",
-  "Financeiro": "financeiro@gsapori.com",
-  "Pós-Vendas": "posvendas@gsapori.com",
-  "Qualidade": "qualidade@gsapori.com",
-  "Vendas": "vendas@gsapori.com",
-  "Diretoria": "diretoria@gsapori.com",
-  "Marketing": "marketing@gsapori.com",
-  "Tráfego Avanti": "trafegoavanti@gsapori.com",
-  "Segurança": "seguranca@gsapori.com",
-  "Veículos Seminovos": "vseminovos@gsapori.com",
-  "Veículos Novos": "vnovos@gsapori.com",
-  "Tráfego Solaris": "trafegosolaris@gsapori.com",
-  "Manutenção": "manutencao@gsapori.com"
+  "RH": ["aline@gsapori.com.br","gpessoas@gsapori.com.br"],
+  "Peças": "thais@poligonofiat.com.br",
+  "TI": "william@gsapori.com.br ",
+  "Funilaria": "funilaria@poligonofiat.com.br",
+  "Assistencia Técnica": "samanta@poligonofiat.com.br",
+  "Financeiro": "kellen@gsapori.com.br ",
+  "Pós-Vendas": "samanta@poligonofiat.com.br",
+  "Qualidade": "matheusfreitas@gsapori.com.br",
+  "Vendas": "rodrigomendes@poligonofiat.com.br",
+  "Diretoria": "camialsapori@gsapori.com.br",
+  "Marketing": "joaoneto@gsapori.com.br",
+  "Tráfego Avanti": "pedrofrancisco@viacaoavanti.com.br",
+  "Segurança": "anafurtado@gsapori.com.br",
+  "Veículos Seminovos": "rodrigomendes@poligonofiat.com.br",
+  "Veículos Novos": "rodrigomendes@poligonofiat.com.br",
+  "Tráfego Solaris": "pedroandre@solaristransportes.com.br",
+  "Manutenção": "pedroandre@solaristransportes.com.br"
 };
 
 export const statuses = {
@@ -45,12 +45,7 @@ export const statuses = {
 };
 
 export function isPrivilegedSector(sector) {
-  const n = String(sector || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLowerCase();
-  return n === "rh" || n === "pecas";
+  return sector === "RH" || sector === "Peças";
 }
 
 export function normalizeStatus(s) {
