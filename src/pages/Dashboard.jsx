@@ -51,13 +51,19 @@ export default function Dashboard() {
       }
     };
     window.addEventListener("storage", onStorage);
-    document.addEventListener("visibilitychange", async () => {
+
+    const onVisibilityChange = async () => {
       if (document.visibilityState === "visible") {
         const st = await api.getStats(user.sector, { source: can("view_received") ? "received" : "sent" });
         setStats(st);
       }
-    });
-    return () => window.removeEventListener("storage", onStorage);
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [user.sector, can]);
 
   const pendingCount = stats.pending;
@@ -84,8 +90,8 @@ export default function Dashboard() {
                   status={d.status}
                   meta1={`De: ${d.senderSector}`}
                   meta2={new Date(d.date).toLocaleString()}
-                  actionLabel={d.status === statuses.PENDENTE && can("evaluate") ? "Avaliar" : "Detalhes"}
-                  actionTo={d.status === statuses.PENDENTE && can("evaluate") ? `/avaliar/${d.id}` : `/documento/${d.id}`}
+                  actionLabel={normalizeStatus(d.status) === statuses.PENDENTE && can("evaluate") && d.uidCriador !== user.uid ? "Avaliar" : "Detalhes"}
+                  actionTo={normalizeStatus(d.status) === statuses.PENDENTE && can("evaluate") && d.uidCriador !== user.uid ? `/avaliar/${d.id}` : `/documento/${d.id}`}
                 />
               ))}
               {received.length === 0 && <div style={{ color: "var(--color-muted)" }}>Sem documentos</div>}
@@ -105,7 +111,7 @@ export default function Dashboard() {
                   status={d.status}
                   meta1={`Para: ${d.targetSector}`}
                   meta2={new Date(d.date).toLocaleString()}
-                  actionLabel="Detalhes"
+                  actionLabel={normalizeStatus(d.status) === statuses.PENDENTE ? "Avaliar" : "Detalhes"}
                   actionTo={`/documento/${d.id}`}
                />
               ))}

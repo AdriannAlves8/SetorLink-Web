@@ -72,6 +72,16 @@ export default function Sent({ compose = true }) {
       return;
     }
 
+    if (file && file.type !== "application/pdf") {
+      setError("Apenas arquivos PDF são permitidos.");
+      return;
+    }
+
+    if (file && file.size > 10 * 1024 * 1024) { // 10MB limit
+      setError("O arquivo é muito grande. O limite é 10MB.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -280,8 +290,9 @@ export default function Sent({ compose = true }) {
                         Detalhes
                       </NavLink>
 
-                      {d.status === statuses.PENDENTE &&
-                        can("delete_if_pending") && (
+                      {normalizeStatus(d.status) === statuses.PENDENTE &&
+                        can("delete_if_pending") &&
+                        d.uidCriador === user.uid && (
                           <button
                             className="btn danger"
                             onClick={() => remove(d.id)}

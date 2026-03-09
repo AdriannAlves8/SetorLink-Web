@@ -1,5 +1,5 @@
 import { Client, Databases, Storage, ID, Query, Account } from "appwrite";
-import { statuses, sectorEmails } from "../utils/constants.js";
+import { statuses, sectorEmails, normalizeStatus } from "../utils/constants.js";
 
 /* ================================
    CONFIGURAÇÕES
@@ -137,12 +137,18 @@ export async function getUser() {
   const acc = await getAccount();
   if (!acc) return null;
   const extras = await getOrCreateUserExtras(acc.$id);
+  const avatarRef = extras?.avatar || extras?.fotoStoragePath || extras?.caminhoDeArmazenamentoDeFotos || null;
+  let avatarUrl = null;
+  if (avatarRef) {
+    const s = String(avatarRef || "");
+    avatarUrl = /^https?:\/\//i.test(s) ? s : (BUCKET_ID ? storage.getFileView(BUCKET_ID, s).href : s);
+  }
   return {
     uid: acc.$id,
     email: acc.email || extras?.email || "",
     sector: extras?.setor || "",
     name: extras?.nome || acc.name || "",
-    avatar: extras?.avatar || extras?.fotoStoragePath || extras?.caminhoDeArmazenamentoDeFotos || null
+    avatar: avatarUrl
   };
 }
 
@@ -248,10 +254,12 @@ export async function sendDocument({
   const now = new Date().toISOString();
   const targets = Array.isArray(targetSector) ? targetSector : [targetSector];
   let pdfUri = null;
+  let pdfStoragePath = null;
 
   if (file && BUCKET_ID) {
     const fileDoc = await storage.createFile(BUCKET_ID, ID.unique(), file);
-    pdfUri = fileDoc.$id;
+    pdfStoragePath = fileDoc.$id;
+    pdfUri = storage.getFileView(BUCKET_ID, fileDoc.$id).href;
   } else {
     pdfUri = fileData || null;
   }
@@ -270,7 +278,8 @@ export async function sendDocument({
       status: statuses.PENDENTE,
       data: now,
       pdfUri,
-      uidCriador
+      pdfStoragePath,
+      uidCriador,
     });
 
     await databases.createDocument(DB_ID, COL_NOTIFICACOES, ID.unique(), {
@@ -303,11 +312,16 @@ function eq(a, b) {
 
 export async function getReceived(sector, { page = 1, pageSize = 10 } = {}) {
   console.log("[api.getReceived] filtros", { setorDestino: sector, page, pageSize });
-  const primary = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
+  const baseFilters = [
     Query.equal("setorDestino", sector),
     Query.limit(pageSize),
     Query.offset(Math.max(0, (page - 1) * pageSize))
-  ]);
+  ];
+  const isRH = String(sector || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === "rh";
+  if (isRH) {
+    baseFilters.push(Query.notEqual("authorSetor", "Peças"));
+  }
+  const primary = await databases.listDocuments(DB_ID, COL_PROPOSTAS, baseFilters);
   const primaryDocs = primary.documents.map(mapDoc);
   console.log("[api.getReceived] primary docs", primaryDocs.map(d => ({ id: d.id, setorDestino: d.targetSector, setor: d.senderSector, status: d.status })));
   if (primaryDocs.length > 0) {
@@ -324,7 +338,9 @@ export async function getReceived(sector, { page = 1, pageSize = 10 } = {}) {
     const dest = d.targetSector || "";
     const alt1 = d.setorDestino || "";
     const alt2 = d.destino || "";
-    return eq(dest, sector) || eq(alt1, sector) || eq(alt2, sector);
+    if (!(eq(dest, sector) || eq(alt1, sector) || eq(alt2, sector))) return false;
+    if (isRH && eq(d.senderSector || "", "Peças")) return false;
+    return true;
   });
   const total = filtered.length;
   const start = Math.max(0, (page - 1) * pageSize);
@@ -335,20 +351,21 @@ export async function getReceived(sector, { page = 1, pageSize = 10 } = {}) {
 
 export async function getSent(sector, hidden = [], { page = 1, pageSize = 10 } = {}) {
   console.log("[api.getSent] filtros", { authorSetor: sector, hidden, page, pageSize });
-  const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
-    Query.equal("authorSetor", sector),
-    Query.limit(1000)
-  ]);
+  const acc = await getAccount();
+  const isRH = String(sector || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === "rh";
+  const filters = [Query.equal("authorSetor", sector), Query.limit(1000)];
+  if (isRH && acc?.$id) filters.push(Query.equal("uidCriador", acc.$id));
+  const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, filters);
   let all = res.documents.map(mapDoc);
   if (all.length === 0) {
-    const fb = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
-      Query.limit(1000)
-    ]);
+    const fb = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [Query.limit(1000)]);
     all = fb.documents.map(mapDoc).filter(d => {
       const author = d.senderSector || "";
       const alt1 = d.authorSetor || "";
       const alt2 = d.setor || "";
-      return eq(author, sector) || eq(alt1, sector) || eq(alt2, sector);
+      const bySector = eq(author, sector) || eq(alt1, sector) || eq(alt2, sector);
+      const byUid = !isRH || (acc?.$id ? d.uidCriador === acc.$id : true);
+      return bySector && byUid;
     });
   }
   all = all.filter(d => {
@@ -372,8 +389,12 @@ export function subscribeToProposals(handler) {
 export async function evaluateDocument(id, status, reviewerSector, reason) {
   const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
 
-  if (current.status !== statuses.PENDENTE) {
+  if (normalizeStatus(current.status) !== statuses.PENDENTE) {
     throw new Error("Documento já avaliado");
+  }
+  const acc = await getAccount();
+  if (acc?.$id && current.uidCriador === acc.$id) {
+    throw new Error("Você não pode avaliar um documento que você criou");
   }
 
   const update = await databases.updateDocument(DB_ID, COL_PROPOSTAS, id, {
@@ -397,8 +418,14 @@ export async function evaluateDocument(id, status, reviewerSector, reason) {
 export async function deleteDocumentIfPending(id) {
   const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
 
-  if (current.status !== statuses.PENDENTE) {
+  if (normalizeStatus(current.status) !== statuses.PENDENTE) {
     throw new Error("Apenas documentos pendentes podem ser excluídos");
+  }
+
+  const acc = await getAccount();
+  const creatorField = current.uidCriador || "";
+  if (!acc || !creatorField || creatorField !== acc.$id) {
+    throw new Error("Você só pode excluir documentos que você enviou");
   }
 
   await databases.deleteDocument(DB_ID, COL_PROPOSTAS, id);
@@ -460,23 +487,33 @@ export async function updateProfile({ sector, name, avatar }) {
     if (name) await account.updateName(name);
   } catch {}
   let updatedExtras = null;
+  let avatarRef = null;
   try {
     const currentExtras = await getOrCreateUserExtras(acc.$id);
-    try {
-      updatedExtras = await databases.updateDocument(DB_ID, COL_USUARIOS, acc.$id, {
-        nome: name ?? currentExtras?.nome ?? "",
-        avatar: avatar ?? currentExtras?.avatar ?? currentExtras?.fotoStoragePath ?? null
-      });
-    } catch (e) {
-      updatedExtras = await databases.updateDocument(DB_ID, COL_USUARIOS, acc.$id, {
-        nome: name ?? currentExtras?.nome ?? "",
-        fotoStoragePath: avatar ?? currentExtras?.fotoStoragePath ?? currentExtras?.avatar ?? null
-      });
+    if (avatar && typeof avatar !== "string" && BUCKET_ID) {
+      const fileDoc = await storage.createFile(BUCKET_ID, ID.unique(), avatar);
+      avatarRef = fileDoc.$id;
+    } else if (typeof avatar === "string") {
+      avatarRef = avatar;
+    } else {
+      avatarRef = currentExtras?.avatar || currentExtras?.fotoStoragePath || currentExtras?.caminhoDeArmazenamentoDeFotos || null;
+    }
+    const payload1 = { nome: name ?? currentExtras?.nome ?? "", avatar: avatarRef ?? null };
+    const payload2 = { nome: name ?? currentExtras?.nome ?? "", fotoStoragePath: avatarRef ?? null };
+    const payload3 = { nome: name ?? currentExtras?.nome ?? "", caminhoDeArmazenamentoDeFotos: avatarRef ?? null };
+    try { updatedExtras = await databases.updateDocument(DB_ID, COL_USUARIOS, acc.$id, payload1); }
+    catch (e1) {
+      try { updatedExtras = await databases.updateDocument(DB_ID, COL_USUARIOS, acc.$id, payload2); }
+      catch (e2) {
+        updatedExtras = await databases.updateDocument(DB_ID, COL_USUARIOS, acc.$id, payload3);
+      }
     }
   } catch {
     updatedExtras = null;
   }
-  return { name: name || acc.name || updatedExtras?.nome || "", avatar: updatedExtras?.avatar || updatedExtras?.fotoStoragePath || null };
+  const ref = avatarRef || updatedExtras?.avatar || updatedExtras?.fotoStoragePath || updatedExtras?.caminhoDeArmazenamentoDeFotos || null;
+  const url = ref ? (/^https?:\/\//i.test(String(ref)) ? String(ref) : (BUCKET_ID ? storage.getFileView(BUCKET_ID, String(ref)).href : String(ref))) : null;
+  return { name: name || acc.name || updatedExtras?.nome || "", avatar: url };
 }
 
 export async function updatePassword({ currentPassword, newPassword }) {
@@ -485,10 +522,13 @@ export async function updatePassword({ currentPassword, newPassword }) {
 }
 
 export async function getStats(sector, { source = "received" } = {}) {
+  const acc = await getAccount();
+  const isRH = String(sector || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === "rh";
   const base = source === "received" ? Query.equal("setorDestino", sector) : Query.equal("authorSetor", sector);
-  const p = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [base, Query.equal("status", statuses.PENDENTE)]);
-  const a = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [base, Query.equal("status", statuses.APROVADO)]);
-  const r = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [base, Query.equal("status", statuses.REPROVADO)]);
+  const extra = source === "sent" && isRH && acc?.$id ? [Query.equal("uidCriador", acc.$id)] : [];
+  const p = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [base, ...extra, Query.equal("status", statuses.PENDENTE)]);
+  const a = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [base, ...extra, Query.equal("status", statuses.APROVADO)]);
+  const r = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [base, ...extra, Query.equal("status", statuses.REPROVADO)]);
   const tp = typeof p.total === "number" ? p.total : p.documents.length;
   const ta = typeof a.total === "number" ? a.total : a.documents.length;
   const tr = typeof r.total === "number" ? r.total : r.documents.length;
@@ -506,10 +546,11 @@ function mapDoc(d) {
     description: d.descricao || "",
     senderSector: d.authorSetor,
     targetSector: d.setorDestino,
-    fileData: d.pdfUri || null,
+    fileData: d.pdfUri || d.pdfStoragePath || null,
     date: d.data,
     status: d.status,
-    reason: d.motivoRecusa || null
+    reason: d.motivoRecusa || null,
+    uidCriador: d.uidCriador || null
   };
 }
 

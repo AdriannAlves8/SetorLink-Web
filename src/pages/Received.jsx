@@ -59,7 +59,7 @@ export default function Received() {
                   <span className={`status ${statusClass(d.status)}`}>{normalizeStatus(d.status)}</span>
                 </td>
                 <td>
-                  {d.status === statuses.PENDENTE && can("evaluate") ? (
+                  {normalizeStatus(d.status) === statuses.PENDENTE && can("evaluate") && d.uidCriador !== user.uid ? (
                     <NavLink className="btn" to={`/avaliar/${d.id}`}>Avaliar</NavLink>
                   ) : (
                     <NavLink className="btn" to={`/documento/${d.id}`}>Detalhes</NavLink>

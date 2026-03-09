@@ -13,14 +13,20 @@ export default function ResetPassword() {
 
   const reset = async () => {
     if (!target) return;
-    await api.resetPassword(target);
-    setMsg(`Senha de ${target} redefinida para 123456`);
+    try {
+      await api.resetPassword(target);
+      setMsg(`Senha de ${target} redefinida para 123456`);
+      setTimeout(() => navigate("/"), 2000);
+    } catch (err) {
+      setMsg("Erro ao redefinir senha");
+    }
   };
 
   return (
     <>
       <div className="content-header">
         <div className="page-title">Reset de Senha</div>
+        <button className="btn" onClick={() => navigate("/")}>Voltar</button>
       </div>
       <div className="card col-12">
         <div className="form">
