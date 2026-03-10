@@ -22,6 +22,7 @@ import DocumentDetail from "../pages/DocumentDetail.jsx";
 import GenerateInvite from "../pages/GenerateInvite.jsx";
 import AcceptInvite from "../pages/AcceptInvite.jsx";
 import VerifyEmail from "../pages/VerifyEmail.jsx";
+import Recover from "../pages/Recover.jsx";
 
 function Protected({ children, permission }) {
   const { user, loading, can } = useAuth();
@@ -39,6 +40,8 @@ function Layout({ children }) {
   const navigate = useNavigate();
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 900);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 900);
 
   const doLogout = () => {
     logout();
@@ -52,9 +55,14 @@ function Layout({ children }) {
     if (confirmLogout) window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [confirmLogout]);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 900);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   return (
-    <div className={`app ${sidebarOpen ? "with-sidebar" : "no-sidebar"}`}>
+    <div className={`app ${sidebarOpen ? "with-sidebar" : "no-sidebar"} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <div className={`sidebar-wrapper ${sidebarOpen ? "open" : "hidden"}`}>
         <Sidebar
           items={[
@@ -69,14 +77,14 @@ function Layout({ children }) {
               ? [{ label: "Enviar Documento", to: "/enviar", icon: "compose" }]
               : []),
             ...(can("generate_invite")
-              ? [{ label: "Gerar Convite", to: "/convites/gerar", icon: "compose" }]
+              ? [{ label: "Adicionar Colaborador", to: "/convites/gerar", icon: "user-plus" }]
               : []),
             ...(can("notifications")
               ? [{ label: "Notificações", to: "/notificacoes", icon: "bell" }]
               : []),
             { label: "Perfil", to: "/perfil", icon: "user" },
             ...(isPrivileged
-              ? [{ label: "Reset de Senha", to: "/reset", icon: "key" }]
+              ? [{ label: "Resetar Senha", to: "/reset", icon: "key" }]
               : [])
           ]}
           onLogout={() => setConfirmLogout(true)}
@@ -84,7 +92,22 @@ function Layout({ children }) {
       </div>
 
       <main className="content">
-        <button className="btn toggle-mobile" onClick={() => setSidebarOpen((s) => !s)}>☰</button>
+        <div className="actions" style={{ marginBottom: 12, justifyContent: "flex-start" }}>
+          <button
+            className="btn"
+            onClick={() => { if (isMobile) setSidebarOpen(s => !s); else setSidebarCollapsed(c => !c); }}
+            aria-label={
+              isMobile ? (sidebarOpen ? "Fechar menu" : "Abrir menu")
+                       : (sidebarCollapsed ? "Expandir sidebar" : "Colapsar sidebar")
+            }
+            title={
+              isMobile ? (sidebarOpen ? "Fechar menu" : "Abrir menu")
+                       : (sidebarCollapsed ? "Expandir sidebar" : "Colapsar sidebar")
+            }
+          >
+            {isMobile ? (sidebarOpen ? "⟨⟨" : "⟩⟩") : (sidebarCollapsed ? "⟩⟩" : "⟨⟨")}
+          </button>
+        </div>
 
         {children}
       </main>
@@ -120,6 +143,7 @@ export default function AppRouter() {
       <Route path="/login" element={<Login />} />
       <Route path="/invite" element={<AcceptInvite />} />
       <Route path="/verify" element={<VerifyEmail />} />
+      <Route path="/recuperar" element={<Recover />} />
 
       <Route
         path="/"

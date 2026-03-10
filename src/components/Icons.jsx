@@ -51,3 +51,20 @@ export const LogoutIcon = ({ size = 18 }) => (
     <path d="M21 12H9" />
   </svg>
 );
+
+export const ExportIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+    <path d="M12 5v9" />
+    <path d="M8 8l4-4 4 4" />
+    <path d="M5 19h14" />
+  </svg>
+);
+
+export const UserPlusIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+    <circle cx="9" cy="7" r="4" />
+    <path d="M2 21v-2a8 8 0 0114 0v2" />
+    <path d="M17 8h5" />
+    <path d="M19.5 5.5v5" />
+  </svg>
+);

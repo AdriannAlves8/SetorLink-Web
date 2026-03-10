@@ -78,7 +78,7 @@ export default function Dashboard() {
       <div className="dashboard-hero">
         <div className="hero-content">
           <div className="hero-title">Olá, {user.name || user.sector}</div>
-          <div className="hero-subtitle">Aqui está um resumo do seu dia</div>
+          <div className="hero-subtitle">Visão geral dos documentos enviados</div>
           <div className="hero-actions">
             {can("send") && <NavLink className="btn primary" to="/enviar">Enviar Documento</NavLink>}
             {can("view_received") && <NavLink className="btn" to="/recebidos">Ver Recebidos</NavLink>}

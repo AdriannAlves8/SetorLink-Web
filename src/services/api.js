@@ -114,6 +114,28 @@ async function updateVerificationCompat(userId, secret) {
   throw new Error("Atualização de verificação não suportada");
 }
 
+async function createRecoveryCompat(email, redirect) {
+  if (typeof account.createRecovery === "function") {
+    try {
+      return await account.createRecovery(email, redirect);
+    } catch {
+      return await account.createRecovery({ email, url: redirect });
+    }
+  }
+  throw new Error("Recuperação por e-mail não suportada");
+}
+
+async function updateRecoveryCompat(userId, secret, password, confirmPassword) {
+  if (typeof account.updateRecovery === "function") {
+    try {
+      return await account.updateRecovery(userId, secret, password, confirmPassword);
+    } catch {
+      return await account.updateRecovery({ userId, secret, password, passwordAgain: confirmPassword || password });
+    }
+  }
+  throw new Error("Atualização de recuperação não suportada");
+}
+
 async function getOrCreateUserExtras(userId) {
   try {
     const doc = await databases.getDocument(DB_ID, COL_USUARIOS, userId);
@@ -186,12 +208,34 @@ function sectorFromEmail(email) {
 }
 
 export async function login(sector, password) {
-  const email = sectorToEmail(sector);
-  await createEmailPasswordSessionCompat(email, password);
-  const acc = await getAccount();
+  let mapped = sectorEmails[sector];
+  if (Array.isArray(mapped)) mapped = mapped.find(v => v && String(v).trim());
+  mapped = mapped ? String(mapped).trim() : null;
+  const synthetic = String(sector || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/\s+/g, "") + "@setorlink.local";
+
+  const tryLogin = async (em) => {
+    await createEmailPasswordSessionCompat(em, password);
+    return await getAccount();
+  };
+
+  let acc = null;
+  if (mapped) {
+    try { acc = await tryLogin(mapped); } catch {}
+  }
+  if (!acc) {
+    try {
+      acc = await tryLogin(synthetic);
+    } catch {
+      await createAccountCompat({ email: synthetic, password, name: sector });
+      acc = await tryLogin(synthetic);
+    }
+  }
   if (!acc) throw new Error("Falha ao obter usuário");
-  const domain = String(acc.email || "").split("@")[1] || "";
-  const isSynthetic = domain === "setorlink.local";
+  if (!acc) throw new Error("Falha ao obter usuário");
+  const domainAcc = String(acc.email || "").split("@")[1] || "";
+  const isSynthetic = domainAcc === "setorlink.local";
   if (!isSynthetic && acc.emailVerification === false) {
     try { await account.deleteSession("current"); } catch {}
     throw new Error("EMAIL_NAO_VERIFICADO");
@@ -556,6 +600,25 @@ export async function updatePassword({ currentPassword, newPassword }) {
     throw new Error("SENHA_FRACA");
   }
   await account.updatePassword(np, currentPassword);
+  return true;
+}
+
+export async function requestPasswordRecovery(email) {
+  const em = String(email || "").trim();
+  if (!em) throw new Error("Informe o e-mail");
+  const redirect = (VITE_CANONICAL_URL || window.location.origin) + "/recuperar";
+  await createRecoveryCompat(em, redirect);
+  return true;
+}
+
+export async function updatePasswordRecovery({ userId, secret, newPassword, confirmPassword }) {
+  const np = String(newPassword || "").trim();
+  const cp = String(confirmPassword || "").trim();
+  if (!userId || !secret) throw new Error("Link de recuperação inválido ou expirado");
+  if (!np || np.length < 6) throw new Error("Senha muito curta");
+  if (np === "12345678") throw new Error("SENHA_FRACA");
+  if (np !== cp) throw new Error("Senhas não conferem");
+  await updateRecoveryCompat(userId, secret, np, cp);
   return true;
 }
 

@@ -7,11 +7,11 @@ export default function Logo({ size = 36, src }) {
     return (
       <img
         src={src}
-        alt="SetorLink"
+        alt="Setor Link"
         width={s}
         height={s}
         onError={() => setFailed(true)}
-        style={{ width: s, height: s, borderRadius: 12, objectFit: "contain", background: "#0b1f3b" }}
+        style={{ width: s, height: s, borderRadius: 12, objectFit: "contain" }}
       />
     );
   }

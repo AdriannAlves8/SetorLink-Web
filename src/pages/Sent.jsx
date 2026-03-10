@@ -6,6 +6,7 @@ import { statuses, statusClass, normalizeStatus } from "../utils/constants.js";
 import { NavLink, useNavigate } from "react-router-dom";
 import StatusFilter from "../components/StatusFilter.jsx";
 import * as XLSX from "xlsx";
+import { ExportIcon } from "../components/Icons.jsx";
 
 export default function Sent({ compose = true }) {
   const { user, allowedDestinations, can } = useAuth();
@@ -138,20 +139,32 @@ export default function Sent({ compose = true }) {
         return;
       }
 
-      const data = evaluated.map((d) => ({
-        "Nome do Documento": d.title,
-        "Setor Destino": Array.isArray(d.targetSector)
-          ? d.targetSector.join(", ")
-          : d.targetSector,
-        "Status": d.status,
-        "Setor Avaliador": d.reviewerSector || "",
-        "Data de Envio": new Date(d.date).toLocaleString(),
-        "Data de Avaliação": d.evaluatedAt
-          ? new Date(d.evaluatedAt).toLocaleString()
-          : "",
-      }));
-
-      const worksheet = XLSX.utils.json_to_sheet(data);
+      const headers = ["Título","Descrição","Enviado por","Recebido por","Status","Mot.Reprovação","Documento"];
+      const rows = evaluated.map((d) => {
+        let docUrl = "";
+        try { if (d.fileData) docUrl = api.getFileViewUrl(d.fileData); } catch {}
+        const prettyLink = docUrl ? { t: "s", v: "Abrir", l: { Target: docUrl } } : "";
+        return [
+          d.title,
+          d.description || "",
+          d.senderSector || "",
+          Array.isArray(d.targetSector) ? d.targetSector.join(", ") : d.targetSector || "",
+          d.status,
+          d.reason || "",
+          prettyLink
+        ];
+      });
+      const aoa = [headers, ...rows];
+      const worksheet = XLSX.utils.aoa_to_sheet(aoa);
+      worksheet["!cols"] = [
+        { wch: 30 },
+        { wch: 50 },
+        { wch: 16 },
+        { wch: 18 },
+        { wch: 12 },
+        { wch: 20 },
+        { wch: 10 }
+      ];
       const workbook = XLSX.utils.book_new();
 
       XLSX.utils.book_append_sheet(
@@ -244,11 +257,9 @@ export default function Sent({ compose = true }) {
           <StatusFilter value={filter} onChange={setFilter} />
 
           {canExport && (
-            <div className="actions" style={{ marginBottom: 8 }}>
-              <button
-                className="btn primary export-btn"
-                onClick={exportToExcel}
-              >
+            <div className="actions" style={{ marginBottom: 8, justifyContent: "flex-end" }}>
+              <button className="btn primary export-btn" onClick={exportToExcel}>
+                <ExportIcon />
                 Exportar Documentos Avaliados
               </button>
             </div>

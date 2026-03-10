@@ -74,16 +74,26 @@ export default function AcceptInvite() {
   };
 
   return (
-    <div className="login" style={{ paddingTop: 40 }}>
-      <div className="login-box">
-        <div className="login-header">
-          <Logo size={36} src="/logo.png" />
-          <div className="login-head-text">
-            <div className="title">Aceitar Convite</div>
-            <div className="subtitle">Informe o token e crie sua conta</div>
+    <div className="login-full">
+      <div className="login-wrapper">
+        <div className="login-hero">
+          <div className="hero-brand">
+            <Logo size={48} src="/logo-icon.png" />
+            <div className="hero-text">
+              <div className="hero-title">SetorLink</div>
+              <div className="hero-sub">Aceite o convite e crie sua conta</div>
+            </div>
           </div>
         </div>
-        <div className="form narrow">
+        <div className="login-panel">
+          <div className="login-box">
+            <div className="login-header">
+              <div className="login-head-text">
+                <div className="title">Aceitar Convite</div>
+                <div className="subtitle">Informe o token e crie sua conta</div>
+              </div>
+            </div>
+            <div className="form narrow">
           <div className="form-row">
             <label>Token</label>
             <div style={{ display: "flex", gap: 8 }}>
@@ -97,7 +107,7 @@ export default function AcceptInvite() {
               </div>
               <button
                 type="button"
-                className="btn primary"
+                className="btn primary inline"
                 onClick={validate}
                 disabled={validating}
                 style={{ whiteSpace: "nowrap", padding: "10px 16px", fontWeight: 600 }}
@@ -153,6 +163,8 @@ export default function AcceptInvite() {
           <button className="btn primary" onClick={submit} disabled={creating || !canSubmit}>
             {creating ? "Criando..." : "Criar conta"}
           </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
