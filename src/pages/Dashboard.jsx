@@ -145,7 +145,7 @@ export default function Dashboard() {
                   className="col-6"
                />
               ))}
-              {sent.length === 0 && <div style={{ color: "var(--color-muted)" }}>Sem documentos</div>}
+              {sent.length === 0 && <div style={{ color: "var(--color-muted)" }}>Sem documentos no momento</div>}
             </div>
           </div>
         )}
@@ -167,7 +167,7 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
-            {notifications.length === 0 && <div style={{ color: "var(--color-muted)" }}>Sem notificações</div>}
+            {notifications.length === 0 && <div style={{ color: "var(--color-muted)" }}>Sem notificações no momento</div>}
           </div>
         </div>
       </div>

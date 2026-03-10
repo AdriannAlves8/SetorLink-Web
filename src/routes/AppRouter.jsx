@@ -14,7 +14,6 @@ import Sent from "../pages/Sent.jsx";
 import Evaluate from "../pages/Evaluate.jsx";
 import Notifications from "../pages/Notifications.jsx";
 import Profile from "../pages/Profile.jsx";
-import ResetPassword from "../pages/ResetPassword.jsx";
 import Alert from "../components/Alert.jsx";
 import Sidebar from "../components/Sidebar.jsx";
 import { LogoutIcon } from "../components/Icons.jsx";
@@ -82,10 +81,7 @@ function Layout({ children }) {
             ...(can("notifications")
               ? [{ label: "Notificações", to: "/notificacoes", icon: "bell" }]
               : []),
-            { label: "Perfil", to: "/perfil", icon: "user" },
-            ...(isPrivileged
-              ? [{ label: "Resetar Senha", to: "/reset", icon: "key" }]
-              : [])
+            { label: "Perfil", to: "/perfil", icon: "user" }
           ]}
           onLogout={() => setConfirmLogout(true)}
         />
@@ -240,17 +236,6 @@ export default function AppRouter() {
           <Protected>
             <Layout>
               <DocumentDetail />
-            </Layout>
-          </Protected>
-        }
-      />
-
-      <Route
-        path="/reset"
-        element={
-          <Protected permission="reset_password">
-            <Layout>
-              <ResetPassword />
             </Layout>
           </Protected>
         }

@@ -23,6 +23,7 @@ export default function Sent({ compose = true }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   const canExport = user?.sector === "RH" || user?.sector === "Peças";
 
@@ -50,6 +51,11 @@ export default function Sent({ compose = true }) {
     });
     return () => { try { unsub(); } catch {} };
   }, [user?.sector, page, pageSize]);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") setConfirmDelete(null); };
+    if (confirmDelete) window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirmDelete]);
 
   // ----------------------------
   // FILE HANDLER
@@ -300,7 +306,7 @@ export default function Sent({ compose = true }) {
                         can("delete_if_pending") && (
                           <button
                             className="btn danger"
-                            onClick={() => remove(d.id)}
+                            onClick={() => setConfirmDelete({ id: d.id, title: d.title })}
                           >
                             Excluir
                           </button>
@@ -336,6 +342,33 @@ export default function Sent({ compose = true }) {
             </div>
           </div>
         </>
+      )}
+      {confirmDelete && (
+        <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
+          <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <div className="card-header">
+              <div className="card-title">Excluir Documento</div>
+            </div>
+            <div className="stack">
+              <div style={{ color: "var(--muted)" }}>
+                Tem certeza que deseja excluir "{confirmDelete.title}"? Esta ação não pode ser desfeita.
+              </div>
+              <div className="actions" style={{ justifyContent: "flex-end" }}>
+                <button className="btn" onClick={() => setConfirmDelete(null)}>Cancelar</button>
+                <button
+                  className="btn danger"
+                  onClick={async () => {
+                    const id = confirmDelete.id;
+                    setConfirmDelete(null);
+                    await remove(id);
+                  }}
+                >
+                  Confirmar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
