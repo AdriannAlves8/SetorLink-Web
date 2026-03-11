@@ -7,6 +7,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import StatusFilter from "../components/StatusFilter.jsx";
 import * as XLSX from "xlsx";
 import { ExportIcon } from "../components/Icons.jsx";
+import { showToast } from "../components/Toast.jsx";
 
 export default function Sent({ compose = true }) {
   const { user, allowedDestinations, can } = useAuth();
@@ -24,6 +25,7 @@ export default function Sent({ compose = true }) {
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [loadingList, setLoadingList] = useState(false);
 
   const canExport = user?.sector === "RH" || user?.sector === "Peças";
 
@@ -32,12 +34,15 @@ export default function Sent({ compose = true }) {
   // ----------------------------
   async function load() {
     try {
+      setLoadingList(true);
       const hidden = acl[user.sector]?.hidden_sent_from || [];
       const res = await api.getSent(user.sector, hidden, { page, pageSize });
       setDocs(res.items);
       setTotal(res.total);
     } catch (err) {
       console.error("Erro ao carregar documentos:", err);
+    } finally {
+      setLoadingList(false);
     }
   }
 
@@ -106,8 +111,10 @@ export default function Sent({ compose = true }) {
       setTargets([]);
       await load();
       navigate("/");
+      showToast({ type: "success", message: "Documento enviado" });
     } catch (err) {
       setError(err.message || "Falha ao enviar documento.");
+      showToast({ type: "error", message: err.message || "Falha ao enviar documento" });
     } finally {
       setLoading(false);
     }
@@ -117,8 +124,9 @@ export default function Sent({ compose = true }) {
     try {
       await api.deleteDocumentIfPending(id);
       await load();
+      showToast({ type: "success", message: "Documento excluído" });
     } catch (err) {
-      alert(err.message);
+      showToast({ type: "error", message: err.message || "Erro ao excluir documento" });
     }
   };
 
@@ -283,7 +291,16 @@ export default function Sent({ compose = true }) {
                 </tr>
               </thead>
               <tbody>
-                {filteredDocs.map((d) => (
+                {loadingList && Array.from({ length: 6 }).map((_, i) => (
+                  <tr key={`skeleton-${i}`}>
+                    <td><div className="skeleton" style={{ width: 160 }} /></td>
+                    <td><div className="skeleton" style={{ width: 120 }} /></td>
+                    <td><div className="skeleton" style={{ width: 140 }} /></td>
+                    <td><div className="skeleton" style={{ width: 80 }} /></td>
+                    <td><div className="skeleton" style={{ width: 100 }} /></td>
+                  </tr>
+                ))}
+                {!loadingList && filteredDocs.map((d) => (
                   <tr key={d.id}>
                     <td>{d.title}</td>
                     <td>
@@ -315,7 +332,7 @@ export default function Sent({ compose = true }) {
                   </tr>
                 ))}
 
-                {filteredDocs.length === 0 && (
+                {!loadingList && filteredDocs.length === 0 && (
                   <tr>
                     <td colSpan={5} style={{ color: "var(--color-muted)" }}>
                       Nenhum documento encontrado

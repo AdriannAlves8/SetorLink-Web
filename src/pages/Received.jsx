@@ -12,11 +12,17 @@ export default function Received() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
+  const [loadingList, setLoadingList] = useState(false);
 
   async function load() {
-    const res = await api.getReceived(user.sector, { page, pageSize });
-    setDocs(res.items);
-    setTotal(res.total);
+    setLoadingList(true);
+    try {
+      const res = await api.getReceived(user.sector, { page, pageSize });
+      setDocs(res.items);
+      setTotal(res.total);
+    } finally {
+      setLoadingList(false);
+    }
   }
 
   useEffect(() => {
@@ -53,7 +59,16 @@ export default function Received() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map(d => (
+            {loadingList && Array.from({ length: 6 }).map((_, i) => (
+              <tr key={`skeleton-${i}`}>
+                <td><div className="skeleton" style={{ width: 160 }} /></td>
+                <td><div className="skeleton" style={{ width: 120 }} /></td>
+                <td><div className="skeleton" style={{ width: 140 }} /></td>
+                <td><div className="skeleton" style={{ width: 80 }} /></td>
+                <td><div className="skeleton" style={{ width: 100 }} /></td>
+              </tr>
+            ))}
+            {!loadingList && filtered.map(d => (
               <tr key={d.id}>
                 <td>{d.title}</td>
                 <td>{d.senderSector}</td>
@@ -79,7 +94,7 @@ export default function Received() {
                 </td>
               </tr>
             ))}
-            {filtered.length === 0 && (
+            {!loadingList && filtered.length === 0 && (
               <tr><td colSpan={5} style={{ color: "var(--color-muted)" }}>Nenhum documento recebido</td></tr>
             )}
           </tbody>

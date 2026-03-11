@@ -22,6 +22,7 @@ import GenerateInvite from "../pages/GenerateInvite.jsx";
 import AcceptInvite from "../pages/AcceptInvite.jsx";
 import VerifyEmail from "../pages/VerifyEmail.jsx";
 import Recover from "../pages/Recover.jsx";
+import ToastManager from "../components/Toast.jsx";
 
 function Protected({ children, permission }) {
   const { user, loading, can } = useAuth();
@@ -106,6 +107,7 @@ function Layout({ children }) {
         </div>
 
         {children}
+        <ToastManager />
       </main>
 
       {confirmLogout && (

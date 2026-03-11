@@ -17,6 +17,8 @@ export default function AcceptInvite() {
   const [pwd2, setPwd2] = useState("");
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState(null);
+  const [showPwd1, setShowPwd1] = useState(false);
+  const [showPwd2, setShowPwd2] = useState(false);
 
   useEffect(() => {
     const qs = new URLSearchParams(window.location.search);
@@ -142,20 +144,48 @@ export default function AcceptInvite() {
           </div>
           <div className="form-row">
             <label>Senha</label>
-            <div className="input-group">
+            <div className="input-group" style={{ position: "relative" }}>
               <span className="input-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="7" cy="12" r="3"/><path d="M10 12h10l-2 2 2 2-2 2"/></svg>
               </span>
-              <input type="password" value={pwd} onChange={(e)=>setPwd(e.target.value)} placeholder="Mínimo 8 caracteres" />
+              <input type={showPwd1 ? "text" : "password"} value={pwd} onChange={(e)=>setPwd(e.target.value)} placeholder="Mínimo 8 caracteres" />
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => setShowPwd1(s => !s)}
+                aria-label={showPwd1 ? "Ocultar senha" : "Mostrar senha"}
+                title={showPwd1 ? "Ocultar senha" : "Mostrar senha"}
+                style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)" }}
+              >
+                {showPwd1 ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.94 10.94 0 0112 20C7 20 3 16 1 12c.86-1.6 2-3.05 3.34-4.24M9.88 9.88A3 3 0 0114.12 14.12M6.1 6.1L17.9 17.9" /></svg>
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></svg>
+                )}
+              </button>
             </div>
           </div>
           <div className="form-row">
             <label>Confirmar senha</label>
-            <div className="input-group">
+            <div className="input-group" style={{ position: "relative" }}>
               <span className="input-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="7" cy="12" r="3"/><path d="M10 12h10l-2 2 2 2-2 2"/></svg>
               </span>
-              <input type="password" value={pwd2} onChange={(e)=>setPwd2(e.target.value)} placeholder="Repita a senha" />
+              <input type={showPwd2 ? "text" : "password"} value={pwd2} onChange={(e)=>setPwd2(e.target.value)} placeholder="Repita a senha" />
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => setShowPwd2(s => !s)}
+                aria-label={showPwd2 ? "Ocultar senha" : "Mostrar senha"}
+                title={showPwd2 ? "Ocultar senha" : "Mostrar senha"}
+                style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)" }}
+              >
+                {showPwd2 ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.94 10.94 0 0112 20C7 20 3 16 1 12c.86-1.6 2-3.05 3.34-4.24M9.88 9.88A3 3 0 0114.12 14.12M6.1 6.1L17.9 17.9" /></svg>
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></svg>
+                )}
+              </button>
             </div>
           </div>
           {error && <div className="error">{error}</div>}

@@ -7,6 +7,7 @@ import { NavLink } from "react-router-dom";
 import Header from "../components/Header.jsx";
 import SummaryCard from "../components/SummaryCard.jsx";
 import DocumentCard from "../components/DocumentCard.jsx";
+import NotificationItem from "../components/NotificationItem.jsx";
 
 export default function Dashboard() {
   const { user, can } = useAuth();
@@ -122,7 +123,7 @@ export default function Dashboard() {
                   />
                 );
               })}
-              {received.length === 0 && <div style={{ color: "var(--color-muted)" }}>Sem documentos</div>}
+              {received.length === 0 && <div style={{ color: "var(--color-muted)" }}>Sem documentos no momento</div>}
             </div>
           </div>
         )}
@@ -149,23 +150,24 @@ export default function Dashboard() {
             </div>
           </div>
         )}
-        {/* Filtro removido conforme regra: aplicar apenas em Recebidos e Enviados */}
         <div className="card col-12">
           <div className="card-header">
             <div className="card-title">Notificações</div>
-            <span className="chip">{notifications.length} novas</span>
+            <div className="actions">
+              <span className="chip">{notifications.length} novas</span>
+              <NavLink className="btn small" to="/notificacoes">Ver todas</NavLink>
+            </div>
           </div>
-          <div style={{ display: "grid", gap: 10 }}>
-            {notifications.slice(0, 5).map(n => (
-              <div key={n.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div>
-                  <div style={{ fontWeight: 600 }}>Documento #{n.documentId.slice(-6).toUpperCase()}</div>
-                  <div style={{ fontSize: 12, color: "var(--color-muted)" }}>Status: {n.newStatus} • {new Date(n.date).toLocaleString()}</div>
-                </div>
-                  <div className={`status ${statusClass(n.newStatus)}`}>
-                  {normalizeStatus(n.newStatus)}
-                </div>
-              </div>
+          <div className="notif-list">
+            {[...notifications].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5).map(n => (
+              <NotificationItem
+                key={n.id}
+                title={n.documentTitle || n.documentId.slice(-6).toUpperCase()}
+                status={n.newStatus}
+                reviewerSector={n.reviewerSector}
+                date={n.date}
+                isNew={Date.now() - new Date(n.date).getTime() < 24*60*60*1000}
+              />
             ))}
             {notifications.length === 0 && <div style={{ color: "var(--color-muted)" }}>Sem notificações no momento</div>}
           </div>

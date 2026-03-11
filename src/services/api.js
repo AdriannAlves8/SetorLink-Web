@@ -76,6 +76,28 @@ async function createEmailPasswordSessionCompat(email, password) {
   }
   throw new Error("Sessão por e-mail não suportada pela versão do SDK");
 }
+async function listSessionsCompat() {
+  try {
+    const res = await account.listSessions();
+    const arr = res?.sessions || res?.documents || (Array.isArray(res) ? res : []);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+async function createEmailSessionWithSessionCap(email, password) {
+  try {
+    const sessions = await listSessionsCompat();
+    if (sessions.length >= 3) {
+      const oldest = [...sessions].sort((a, b) => new Date(a?.$createdAt || 0) - new Date(b?.$createdAt || 0))[0];
+      if (oldest?.$id) {
+        try { await account.deleteSession(oldest.$id); } catch {}
+      }
+    }
+    try { await account.deleteSession("current"); } catch {}
+  } catch {}
+  return await createEmailPasswordSessionCompat(email, password);
+}
 
 async function createAccountCompat({ email, password, name }) {
   if (typeof account.create === "function") {
@@ -216,7 +238,7 @@ export async function login(sector, password) {
     .toLowerCase().replace(/\s+/g, "") + "@setorlink.local";
 
   const tryLogin = async (em) => {
-    await createEmailPasswordSessionCompat(em, password);
+    await createEmailSessionWithSessionCap(em, password);
     return await getAccount();
   };
 
@@ -273,7 +295,7 @@ export async function updateEmailVerification(userId, secret) {
 }
 
 export async function loginByEmail(email, password) {
-  await createEmailPasswordSessionCompat(email, password);
+  await createEmailSessionWithSessionCap(email, password);
   const acc = await getAccount();
   if (!acc) throw new Error("Falha ao obter usuário");
   const domain = String(acc.email || "").split("@")[1] || "";
@@ -526,7 +548,20 @@ export async function getNotifications(sector) {
       try {
         const d = await databases.getDocument(DB_ID, COL_PROPOSTAS, n.documentId);
         const cur = normalizeStatus(d.status);
-        return { ...n, newStatus: cur };
+        const parseReviewer = (t) => {
+          const s = String(t || "");
+          const m = s.match(/pelo setor\s+(.+)$/i);
+          return m ? m[1].trim() : null;
+        };
+        return {
+          ...n,
+          newStatus: cur,
+          documentTitle: d.titulo || n.documentTitle,
+          senderSector: d.authorSetor || d.setor || "",
+          targetSector: d.setorDestino || "",
+          reason: d.motivoRecusa || null,
+          reviewerSector: parseReviewer(n.title)
+        };
       } catch {
         return n;
       }
@@ -679,7 +714,7 @@ function addDays(date, days) {
 
 export async function createInvite({ email, empresa, setor, dias = 7 }) {
   if (!COL_CONVITES) throw new Error("Coleção de convites não configurada");
-  const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   const gen = (len = 6) => Array.from({ length: len }, () => CHARS[Math.floor(Math.random() * CHARS.length)]).join("");
   let token = gen(6);
   // Garante unicidade do token com algumas tentativas
