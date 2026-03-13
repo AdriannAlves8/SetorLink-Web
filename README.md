@@ -85,7 +85,7 @@ setorlink/
 
 Como executar o projeto
 1️⃣ Clonar o repositório
-git clone https://github.com/seu-usuario/setorlink.git
+git clone https://github.com/AdriannAlves8/SetorLink-Web.git
 
 2️⃣ Entrar na pasta do projeto
 cd setorlink
