@@ -72,17 +72,6 @@ Ambiente de desenvolvimento:
 
 Node.js
 
-Estrutura do Projeto
-setorlink/
- ├── public/
- ├── src/
- │   ├── components/
- │   ├── pages/
- │   ├── services/
- │   └── styles/
- ├── package.json
- └── README.md
-
 Como executar o projeto
 1️⃣ Clonar o repositório
 git clone https://github.com/AdriannAlves8/SetorLink-Web.git
