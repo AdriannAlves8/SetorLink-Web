@@ -286,7 +286,7 @@ export default function Sent({ compose = true }) {
                   <th>Título</th>
                   <th>Destino</th>
                   <th>Data</th>
-                  <th>Status</th>
+                  <th>status</th>
                   <th>Ações</th>
                 </tr>
               </thead>
