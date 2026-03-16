@@ -10,10 +10,15 @@ export default function DocumentDetail() {
   const [preview, setPreview] = useState(false);
 
   useEffect(() => {
-    (async () => {
+    const load = async () => {
       const d = await api.getDocumentById(id);
       setDoc(d);
-    })();
+    };
+    load();
+    const unsubscribe = api.subscribeToDocument(id, () => {
+      load();
+    });
+    return () => unsubscribe();
   }, [id]);
 
   if (!doc) return <div style={{ padding: 24 }}>Carregando...</div>;

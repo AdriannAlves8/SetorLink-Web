@@ -17,7 +17,8 @@ export default function Dashboard() {
   const [stats, setStats] = useState({ pending: 0, approved: 0, rejected: 0 });
 
   useEffect(() => {
-    (async () => {
+    const fetchData = async () => {
+      if (!user || !user.sector) return;
       const r = await api.getReceived(user.sector, { page: 1, pageSize: 50 });
       setReceived(r.items);
       const n = await api.getNotifications(user.sector);
@@ -31,40 +32,27 @@ export default function Dashboard() {
       }
       const st = await api.getStats(user.sector, { source: can("view_received") ? "received" : "sent" });
       setStats(st);
-    })();
-    const onStorage = (e) => {
-      if (e.key === "setorlink.documents" || e.key === "setorlink.notifications") {
-        (async () => {
-          const r = await api.getReceived(user.sector, { page: 1, pageSize: 50 });
-          setReceived(r.items);
-          const st = await api.getStats(user.sector, { source: can("view_received") ? "received" : "sent" });
-          setStats(st);
-          const n = await api.getNotifications(user.sector);
-          setNotifications(n);
-          if (can("view_sent")) {
-            const hidden = acl[user.sector]?.hidden_sent_from || [];
-            const s = await api.getSent(user.sector, hidden, { page: 1, pageSize: 50 });
-            setSent(s.items);
-          } else {
-            setSent([]);
-          }
-        })();
-      }
     };
-    window.addEventListener("storage", onStorage);
+
+    fetchData();
+
+    // Inscrição em Tempo Real
+    const unsubscribe = api.subscribe(
+      [api.CHANNELS.PROPOSTAS, api.CHANNELS.NOTIFICACOES],
+      (response) => {
+        // Recarregar dados se houver qualquer mudança nas coleções relevantes
+        fetchData();
+      }
+    );
 
     const onVisibilityChange = async () => {
       if (document.visibilityState !== "visible") return;
-      if (!user || !user.sector) return;
-      try {
-        const st = await api.getStats(user.sector, { source: can("view_received") ? "received" : "sent" });
-        setStats(st);
-      } catch {}
+      fetchData();
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
-      window.removeEventListener("storage", onStorage);
+      unsubscribe();
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [user.sector, can]);

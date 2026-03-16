@@ -16,13 +16,10 @@ export default function Notifications() {
   
   useEffect(() => { 
     load();
-    const onStorage = (e) => {
-      if (e.key === "setorlink.notifications") {
-        load();
-      }
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    const unsubscribe = api.subscribeToNotifications(() => {
+      load();
+    });
+    return () => unsubscribe();
   }, [user.sector]);
 
   const remove = async (id) => {

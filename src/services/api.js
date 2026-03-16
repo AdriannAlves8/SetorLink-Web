@@ -47,6 +47,19 @@ const storage = new Storage(client);
 const account = new Account(client);
 
 /* ================================
+   REALTIME
+================================ */
+
+export const CHANNELS = {
+  PROPOSTAS: `databases.${VITE_APPWRITE_DATABASE_ID}.collections.${VITE_APPWRITE_COLLECTION_PROPOSTAS}.documents`,
+  NOTIFICACOES: `databases.${VITE_APPWRITE_DATABASE_ID}.collections.${VITE_APPWRITE_COLLECTION_NOTIFICACOES}.documents`,
+};
+
+export function subscribe(channels, callback) {
+  return client.subscribe(channels, callback);
+}
+
+/* ================================
    SESSION / ACCOUNT
 ================================ */
 
@@ -449,11 +462,16 @@ export async function getSent(sector, hidden = [], { page = 1, pageSize = 10 } =
 }
 
 export function subscribeToProposals(handler) {
-  const channel = `databases.${DB_ID}.collections.${COL_PROPOSTAS}.documents`;
-  const unsub = client.subscribe(channel, (res) => {
-    try { handler(res); } catch {}
-  });
-  return () => { try { unsub(); } catch {} };
+  return subscribe(CHANNELS.PROPOSTAS, handler);
+}
+
+export function subscribeToNotifications(handler) {
+  return subscribe(CHANNELS.NOTIFICACOES, handler);
+}
+
+export function subscribeToDocument(id, handler) {
+  const channel = `databases.${VITE_APPWRITE_DATABASE_ID}.collections.${VITE_APPWRITE_COLLECTION_PROPOSTAS}.documents.${id}`;
+  return subscribe(channel, handler);
 }
 
 export async function evaluateDocument(id, status, reviewerSector, reason) {
