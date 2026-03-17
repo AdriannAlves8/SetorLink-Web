@@ -29,9 +29,7 @@ export default function Sent({ compose = true }) {
 
   const canExport = user?.sector === "RH" || user?.sector === "Peças";
 
-  // ----------------------------
-  // LOAD DOCUMENTS
-  // ----------------------------
+  
   async function load() {
     try {
       setLoadingList(true);
@@ -286,7 +284,7 @@ export default function Sent({ compose = true }) {
                   <th>Título</th>
                   <th>Destino</th>
                   <th>Data</th>
-                  <th>Status</th>
+                  <th>status</th>
                   <th>Ações</th>
                 </tr>
               </thead>
