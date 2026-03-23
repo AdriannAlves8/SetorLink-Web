@@ -4,7 +4,7 @@ import { sectors } from "../utils/constants.js";
 import * as api from "../services/api.js";
 
 export default function GenerateInvite() {
-  const { user } = useAuth();
+  const { user, allowedDestinations } = useAuth();
   const [email, setEmail] = useState("");
   const [empresa, setEmpresa] = useState("");
   const [setor, setSetor] = useState("");
@@ -12,6 +12,9 @@ export default function GenerateInvite() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // Filtra os setores baseados nos destinos permitidos para o usuário atual
+  const availableSectors = allowedDestinations();
 
   const submit = async (e) => {
     e.preventDefault();
@@ -51,7 +54,7 @@ export default function GenerateInvite() {
             <label>Setor</label>
             <select value={setor} onChange={(e)=>setSetor(e.target.value)}>
               <option value="">Selecione</option>
-              {sectors.map(s => <option key={s} value={s}>{s}</option>)}
+              {availableSectors.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div className="form-row">

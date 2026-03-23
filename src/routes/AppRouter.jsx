@@ -62,8 +62,9 @@ function Layout({ children }) {
   }, []);
 
   return (
-    <div className={`app ${sidebarOpen ? "with-sidebar" : "no-sidebar"} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+    <div className={`app ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <div className={`sidebar-wrapper ${sidebarOpen ? "open" : "hidden"}`}>
+        {isMobile && sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
         <Sidebar
           items={[
             { label: "Dashboard", to: "/", end: true, icon: "home" },
@@ -89,23 +90,24 @@ function Layout({ children }) {
       </div>
 
       <main className="content">
-        <div className="actions" style={{ marginBottom: 12, justifyContent: "flex-start" }}>
+        <div className="actions mobile-header-actions" style={{ marginBottom: 12, justifyContent: "flex-start" }}>
           <button
-            className="btn"
+            className="btn toggle-sidebar-btn"
             onClick={() => { if (isMobile) setSidebarOpen(s => !s); else setSidebarCollapsed(c => !c); }}
             aria-label={
               isMobile ? (sidebarOpen ? "Fechar menu" : "Abrir menu")
                        : (sidebarCollapsed ? "Expandir sidebar" : "Colapsar sidebar")
             }
-            title={
-              isMobile ? (sidebarOpen ? "Fechar menu" : "Abrir menu")
-                       : (sidebarCollapsed ? "Expandir sidebar" : "Colapsar sidebar")
-            }
           >
-            {isMobile ? (sidebarOpen ? "⟨⟨" : "⟩⟩") : (sidebarCollapsed ? "⟩⟩" : "⟨⟨")}
+            <span className="nav-ico-svg">
+              {isMobile ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+              )}
+            </span>
           </button>
         </div>
-
         {children}
         <ToastManager />
       </main>

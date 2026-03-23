@@ -232,23 +232,38 @@ export default function Sent({ compose = true }) {
           </div>
 
           <div className="form-row">
-            <label>Destinos</label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {allowedDestinations().map((d) => (
-                <label key={d} style={{ display: "flex", gap: 4 }}>
-                  <input
-                    type="checkbox"
-                    checked={targets.includes(d)}
-                    onChange={(e) =>
-                      e.target.checked
-                        ? setTargets([...targets, d])
-                        : setTargets(targets.filter((t) => t !== d))
+            <label>Destinos (Selecione um ou mais)</label>
+            <div className="destinations-selector">
+              {allowedDestinations().map((d) => {
+                const isSelected = targets.includes(d);
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    className={`dest-chip ${isSelected ? "active" : ""}`}
+                    onClick={() =>
+                      isSelected
+                        ? setTargets(targets.filter((t) => t !== d))
+                        : setTargets([...targets, d])
                     }
-                  />
-                  {d}
-                </label>
-              ))}
+                  >
+                    <span className="chip-check">
+                      {isSelected ? (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                      ) : (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle></svg>
+                      )}
+                    </span>
+                    {d}
+                  </button>
+                );
+              })}
             </div>
+            {targets.length > 0 && (
+              <div className="helper" style={{ marginTop: 4 }}>
+                {targets.length} {targets.length === 1 ? "setor selecionado" : "setores selecionados"}
+              </div>
+            )}
           </div>
 
           {error && (
@@ -278,68 +293,70 @@ export default function Sent({ compose = true }) {
           )}
 
           <div className="card col-12">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Título</th>
-                  <th>Destino</th>
-                  <th>Data</th>
-                  <th>status</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loadingList && Array.from({ length: 6 }).map((_, i) => (
-                  <tr key={`skeleton-${i}`}>
-                    <td><div className="skeleton" style={{ width: 160 }} /></td>
-                    <td><div className="skeleton" style={{ width: 120 }} /></td>
-                    <td><div className="skeleton" style={{ width: 140 }} /></td>
-                    <td><div className="skeleton" style={{ width: 80 }} /></td>
-                    <td><div className="skeleton" style={{ width: 100 }} /></td>
-                  </tr>
-                ))}
-                {!loadingList && filteredDocs.map((d) => (
-                  <tr key={d.id}>
-                    <td>{d.title}</td>
-                    <td>
-                      {Array.isArray(d.targetSector)
-                        ? d.targetSector.join(", ")
-                        : d.targetSector}
-                    </td>
-                    <td>
-                      {new Date(d.date).toLocaleString()}
-                    </td>
-                    <td>
-                      <span className={`status ${statusClass(d.status)}`}>
-                        {normalizeStatus(d.status)}
-                      </span>
-                    </td>
-                    <td>
-                      <NavLink className="btn" to={`/documento/${d.id}`}>Detalhes</NavLink>
-
-                      {normalizeStatus(d.status) === statuses.PENDENTE &&
-                        can("delete_if_pending") && (
-                          <button
-                            className="btn danger"
-                            onClick={() => setConfirmDelete({ id: d.id, title: d.title })}
-                          >
-                            Excluir
-                          </button>
-                        )}
-                    </td>
-                  </tr>
-                ))}
-
-                {!loadingList && filteredDocs.length === 0 && (
+            <div className="table-container">
+              <table className="table">
+                <thead>
                   <tr>
-                    <td colSpan={5} style={{ color: "var(--color-muted)" }}>
-                      Nenhum documento encontrado
-                    </td>
+                    <th>Título</th>
+                    <th>Destino</th>
+                    <th>Data</th>
+                    <th>status</th>
+                    <th>Ações</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
-            <div className="pagination" style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+                </thead>
+                <tbody>
+                  {loadingList && Array.from({ length: 6 }).map((_, i) => (
+                    <tr key={`skeleton-${i}`}>
+                      <td><div className="skeleton" style={{ width: 160 }} /></td>
+                      <td><div className="skeleton" style={{ width: 120 }} /></td>
+                      <td><div className="skeleton" style={{ width: 140 }} /></td>
+                      <td><div className="skeleton" style={{ width: 80 }} /></td>
+                      <td><div className="skeleton" style={{ width: 100 }} /></td>
+                    </tr>
+                  ))}
+                  {!loadingList && filteredDocs.map((d) => (
+                    <tr key={d.id}>
+                      <td>{d.title}</td>
+                      <td>
+                        {Array.isArray(d.targetSector)
+                          ? d.targetSector.join(", ")
+                          : d.targetSector}
+                      </td>
+                      <td>
+                        {new Date(d.date).toLocaleString()}
+                      </td>
+                      <td>
+                        <span className={`status ${statusClass(d.status)}`}>
+                          {normalizeStatus(d.status)}
+                        </span>
+                      </td>
+                      <td>
+                        <NavLink className="btn" to={`/documento/${d.id}`}>Detalhes</NavLink>
+
+                        {normalizeStatus(d.status) === statuses.PENDENTE &&
+                          can("delete_if_pending") && (
+                            <button
+                              className="btn danger"
+                              onClick={() => setConfirmDelete({ id: d.id, title: d.title })}
+                            >
+                              Excluir
+                            </button>
+                          )}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {!loadingList && filteredDocs.length === 0 && (
+                    <tr>
+                      <td colSpan={5} style={{ color: "var(--color-muted)" }}>
+                        Nenhum documento encontrado
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="pagination" style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", marginTop: 8, flexWrap: "wrap" }}>
               <div>
                 <button className="btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}>Anterior</button>
                 <button className="btn" onClick={() => setPage(p => (p * pageSize < total ? p + 1 : p))} disabled={page * pageSize >= total}>Próxima</button>

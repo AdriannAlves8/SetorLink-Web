@@ -112,15 +112,25 @@ async function createEmailSessionWithSessionCap(email, password) {
   return await createEmailPasswordSessionCompat(email, password);
 }
 
+const genSafeId = () => Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+
 async function createAccountCompat({ email, password, name }) {
+  const safeId = genSafeId();
   if (typeof account.create === "function") {
     try {
-      return await account.create({ userId: ID.unique(), email, password, name });
-    } catch {
+      // Tenta o formato de objeto (SDK v14+)
+      return await account.create({ userId: safeId, email, password, name });
+    } catch (e1) {
       try {
-        return await account.create(ID.unique(), email, password, name);
-      } catch {
-        return await account.create(email, password, name);
+        // Tenta o formato posicional com ID manual (Compatibilidade)
+        return await account.create(safeId, email, password, name);
+      } catch (e2) {
+        try {
+          // Tenta o formato posicional legado
+          return await account.create(email, password, name);
+        } catch (e3) {
+          throw e1; // Se tudo falhar, joga o primeiro erro (geralmente o mais relevante)
+        }
       }
     }
   }
@@ -291,12 +301,14 @@ export async function login(sector, password) {
 }
 
 export async function resendVerification(redirect) {
-  let base = VITE_CANONICAL_URL || "";
   const origin = typeof window !== "undefined" ? window.location.origin : "";
+  let base = VITE_CANONICAL_URL || origin;
+  
   const isLocalCanonical = /^(https?:\/\/)?(localhost|127\.0\.0\.1)/i.test(String(VITE_CANONICAL_URL || ""));
-  if (isLocalCanonical && origin && origin !== VITE_CANONICAL_URL) {
+  if (isLocalCanonical && origin && !/localhost|127\.0\.0\.1/.test(origin)) {
     base = origin;
   }
+  
   const url = redirect || `${base}/verify`;
   await createVerificationCompat(url);
   return true;
@@ -788,12 +800,20 @@ export async function acceptInvite({ token, email, password, name }) {
       isAdmin: inv.setor === "RH"
     });
   } catch {}
-  let base = VITE_CANONICAL_URL || "";
+  
   const origin = typeof window !== "undefined" ? window.location.origin : "";
+  let base = VITE_CANONICAL_URL || origin;
+  
+  // Se VITE_CANONICAL_URL for localhost mas estiver rodando em outro lugar (ou vice-versa), prefere o origin
   const isLocalCanonical = /^(https?:\/\/)?(localhost|127\.0\.0\.1)/i.test(String(VITE_CANONICAL_URL || ""));
-  if (isLocalCanonical && origin && origin !== VITE_CANONICAL_URL) {
+  if (isLocalCanonical && origin && !/localhost|127\.0\.0\.1/.test(origin)) {
     base = origin;
   }
+  
+  if (!base) {
+    throw new Error("Não foi possível determinar a URL base para verificação de e-mail. Configure VITE_CANONICAL_URL.");
+  }
+
   await createVerificationCompat(`${base}/verify`);
   await markInviteUsed(inv.id);
   return true;
@@ -808,10 +828,12 @@ export async function markInviteUsed(inviteId) {
 export function buildInviteLink(token) {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   let base = VITE_CANONICAL_URL || origin;
+  
   const isLocalCanonical = /^(https?:\/\/)?(localhost|127\.0\.0\.1)/i.test(String(VITE_CANONICAL_URL || ""));
-  if (isLocalCanonical && origin && origin !== VITE_CANONICAL_URL) {
+  if (isLocalCanonical && origin && !/localhost|127\.0\.0\.1/.test(origin)) {
     base = origin;
   }
+  
   return `${base}/invite?token=${encodeURIComponent(token)}`;
 }
 

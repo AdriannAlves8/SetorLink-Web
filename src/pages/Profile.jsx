@@ -57,6 +57,13 @@ export default function Profile() {
     setTimeout(() => navigate("/"), 800);
   };
 
+  const initials = (user?.name || user?.sector || "U")
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
   return (
     <>
       <div className="content-header">
@@ -68,8 +75,12 @@ export default function Profile() {
         </div>
         <div className="form">
           <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-            <div style={{ width: 72, height: 72, borderRadius: 12, background: "rgba(255,255,255,0.06)", border: "1px solid var(--border)", overflow: "hidden" }}>
-              {avatarPreview ? <img alt="avatar" src={avatarPreview} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", color: "var(--muted)" }}>IMG</div>}
+            <div className="avatar profile-avatar">
+              {avatarPreview ? (
+                <img alt="avatar" src={avatarPreview} />
+              ) : (
+                <span className="avatar-initials">{initials}</span>
+              )}
             </div>
             <div className="stack" style={{ alignItems: "flex-start" }}>
               <input type="file" onChange={onAvatar} />
