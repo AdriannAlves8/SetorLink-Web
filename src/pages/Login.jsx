@@ -64,7 +64,7 @@ export default function Login() {
               <img
                 src="/illustration-login.png"
                 srcSet="/illustration-login.png 1x, /illustration-login@2x.png 2x, /illustration-login@3x.png 3x"
-                sizes="(min-width: 900px) 480px, 92vw"
+                sizes="(min-width: 768px) 480px, 92vw"
                 alt="Ilustração SetorLink"
                 loading="lazy"
                 decoding="async"

@@ -39,32 +39,48 @@ function Layout({ children }) {
   const { user, logout, can, isPrivileged } = useAuth();
   const navigate = useNavigate();
   const [confirmLogout, setConfirmLogout] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 900);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 900);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
 
   const doLogout = () => {
     logout();
     navigate("/login");
   };
 
+  // Fecha a sidebar ao mudar de rota no mobile
+  useEffect(() => {
+    if (isMobile) setSidebarOpen(false);
+  }, [location.pathname, isMobile]);
+
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === "Escape") setConfirmLogout(false);
+      if (e.key === "Escape") {
+        setConfirmLogout(false);
+        setSidebarOpen(false);
+      }
     };
-    if (confirmLogout) window.addEventListener("keydown", onKey);
+    if (confirmLogout || sidebarOpen) window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [confirmLogout]);
+  }, [confirmLogout, sidebarOpen]);
+
   useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 900);
+    const onResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (!mobile) setSidebarOpen(false); // Reset mobile sidebar on desktop
+    };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
   return (
-    <div className={`app ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
-      <div className={`sidebar-wrapper ${sidebarOpen ? "open" : "hidden"}`}>
-        {isMobile && sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+    <div className={`app ${isMobile ? "mobile-view" : "desktop-view"} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      {isMobile && sidebarOpen && (
+        <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
+      )}
+      
+      <div className={`sidebar-wrapper ${isMobile && sidebarOpen ? "open" : ""}`}>
         <Sidebar
           items={[
             { label: "Dashboard", to: "/", end: true, icon: "home" },
@@ -93,7 +109,10 @@ function Layout({ children }) {
         <div className="actions mobile-header-actions" style={{ marginBottom: 12, justifyContent: "flex-start" }}>
           <button
             className="btn toggle-sidebar-btn"
-            onClick={() => { if (isMobile) setSidebarOpen(s => !s); else setSidebarCollapsed(c => !c); }}
+            onClick={() => { 
+              if (isMobile) setSidebarOpen(s => !s); 
+              else setSidebarCollapsed(c => !c); 
+            }}
             aria-label={
               isMobile ? (sidebarOpen ? "Fechar menu" : "Abrir menu")
                        : (sidebarCollapsed ? "Expandir sidebar" : "Colapsar sidebar")
@@ -101,7 +120,11 @@ function Layout({ children }) {
           >
             <span className="nav-ico-svg">
               {isMobile ? (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                sidebarOpen ? (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                )
               ) : (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
               )}

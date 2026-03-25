@@ -74,7 +74,7 @@ export default function Profile() {
           <div className="card-title">Informações da Conta</div>
         </div>
         <div className="form">
-          <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+          <div className="profile-avatar-row" style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
             <div className="avatar profile-avatar">
               {avatarPreview ? (
                 <img alt="avatar" src={avatarPreview} />
@@ -82,10 +82,10 @@ export default function Profile() {
                 <span className="avatar-initials">{initials}</span>
               )}
             </div>
-            <div className="stack" style={{ alignItems: "flex-start" }}>
-              <input type="file" onChange={onAvatar} />
-            </div>
+            <div className="stack" style={{ alignItems: "flex-start", flex: "1 1 300px" }}>
+              <input type="file" onChange={onAvatar} style={{ width: "100%" }} />
               <div className="helper">Formatos: JPG/PNG • Tamanho recomendado até 2MB</div>
+            </div>
           </div>
           <div className="form-row">
             <label>Nome</label>
