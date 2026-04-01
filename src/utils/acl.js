@@ -1,4 +1,22 @@
-// Permissões por setor e destinos permitidos
+// Permissões: fluxo centralizado em Peças (pedidos de compra).
+// setorDestino não é usado na lógica; qualquer setor autenticado pode enviar (send).
+
+const base = {
+  destinations: [],
+  hidden_sent_from: []
+};
+
+const common = {
+  send: true,
+  view_sent: true,
+  view_received: false,
+  evaluate: false,
+  delete_if_pending: true,
+  reset_password: false,
+  notifications: true,
+  ...base
+};
+
 export const acl = {
   RH: {
     send: true,
@@ -7,13 +25,8 @@ export const acl = {
     evaluate: false,
     delete_if_pending: true,
     reset_password: true,
-    generate_invite: true,
     notifications: true,
-    destinations: [
-      "TI", "Peças", "Funilaria", "Assistencia Técnica", "Financeiro",
-      "Qualidade", "Vendas", "Diretoria", "Marketing", "Tráfego Avanti", "Segurança", "Tráfego Solaris"
-    ],
-    hidden_sent_from: ["Peças"]
+    ...base
   },
   "Peças": {
     send: true,
@@ -22,32 +35,24 @@ export const acl = {
     evaluate: true,
     delete_if_pending: true,
     reset_password: false,
-    generate_invite: true,
     notifications: true,
-    destinations: ["TI","Assistencia Técnica","Funilaria", "Diretoria"],
-    hidden_sent_from: ["RH"]
+    ...base
   },
-  // Usuários comuns
-    TI: {
-    send: false,
-    view_sent: false,
-    view_received: true,
-    evaluate: true,
-    delete_if_pending: false,
-    reset_password: false,
-    generate_invite: false,
-    notifications: true,
-    destinations: [],
-    hidden_sent_from: []
-  },
-  Funilaria: { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
-  "Assistencia Técnica": { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
-  Financeiro: { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
-  Qualidade: { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
-  Vendas: { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
-  Diretoria: { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
-  Marketing: { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
-  "Tráfego Avanti": { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
-  Segurança: { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
-  "Tráfego Solaris": { send: false, view_sent: false, view_received: true, evaluate: true, delete_if_pending: false, reset_password: false, notifications: true, destinations: [] },
+  TI: { ...common },
+  Funilaria: { ...common },
+  "Assistencia Técnica": { ...common },
+  Financeiro: { ...common },
+  "Pós-Vendas": { ...common },
+  Qualidade: { ...common },
+  Vendas: { ...common },
+  Diretoria: { ...common },
+  Marketing: { ...common },
+  "Tráfego Avanti": { ...common },
+  Segurança: { ...common },
+  "Tráfego Solaris": { ...common },
+  "Veículos Seminovos": { ...common },
+  "Veículos Novos": { ...common },
+  Suprimentos: { ...common },
+  Estoque: { ...common },
+  Manutenção: { ...common }
 };

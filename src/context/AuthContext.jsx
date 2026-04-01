@@ -60,13 +60,25 @@ export function AuthProvider({ children }) {
     return found ? found[0] : nsec || "";
   };
 
+  const defaultAcl = {
+    send: true,
+    view_sent: true,
+    view_received: false,
+    evaluate: false,
+    delete_if_pending: true,
+    reset_password: false,
+    notifications: true,
+    destinations: [],
+    hidden_sent_from: []
+  };
+
   const can = (permission) => {
     if (!user) return false;
     const sectorKey = deriveSector();
-    const rules = acl[sectorKey] || {};
+    const rules = { ...defaultAcl, ...(acl[sectorKey] || {}) };
     // Setores privilegiados têm permissões garantidas
     if (isPrivilegedSector(sectorKey)) {
-      const adminPerms = new Set(["send","view_sent","notifications","reset_password","generate_invite"]);
+      const adminPerms = new Set(["send","view_sent","notifications","reset_password"]);
       if (adminPerms.has(permission)) return true;
     }
     return !!rules[permission];
@@ -74,7 +86,7 @@ export function AuthProvider({ children }) {
   const allowedDestinations = () => {
     if (!user) return [];
     const sectorKey = deriveSector();
-    const rules = acl[sectorKey] || {};
+    const rules = { ...defaultAcl, ...(acl[sectorKey] || {}) };
     return rules.destinations || [];
   };
 

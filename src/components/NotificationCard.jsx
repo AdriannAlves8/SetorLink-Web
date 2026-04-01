@@ -1,5 +1,5 @@
 import React from "react";
-import { statuses, statusClass, normalizeStatus } from "../utils/constants.js";
+import { statusClass, statusLabel } from "../utils/constants.js";
 
 export default function NotificationCard({ title, documentTitle, date, status, onDelete }) {
   const cls = statusClass(status);
@@ -13,7 +13,7 @@ export default function NotificationCard({ title, documentTitle, date, status, o
         </div>
       </div>
       <div className="notification-actions">
-        <span className={`status ${cls}`}>{normalizeStatus(status)}</span>
+        <span className={`status ${cls}`}>{statusLabel(status)}</span>
         <button className="btn danger small" onClick={onDelete}>Excluir</button>
       </div>
     </div>

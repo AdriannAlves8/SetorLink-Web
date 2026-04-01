@@ -1,5 +1,5 @@
 import { Client, Databases, Storage, ID, Query, Account } from "appwrite";
-import { statuses, sectorEmails, normalizeStatus } from "../utils/constants.js";
+import { statuses, sectorEmails, normalizeStatus, isPecasSector } from "../utils/constants.js";
 
 /* ================================
    CONFIGURAÇÕES
@@ -349,16 +349,33 @@ export async function loginByEmail(email, password) {
    DOCUMENTOS
 ================================ */
 
+function optStr(v) {
+  const s = String(v ?? "").trim();
+  return s === "" ? null : s;
+}
+
+/** Valor numérico opcional: vazio → null; número válido → float */
+function optValor(v) {
+  if (v === "" || v == null) return null;
+  const n = typeof v === "number" ? v : parseFloat(String(v).replace(",", "."));
+  if (Number.isNaN(n)) return null;
+  return n;
+}
+
 export async function sendDocument({
   title,
   description,
   file,
   fileData,
   senderSector,
-  targetSector
+  targetSector: _targetIgnored,
+  nomeProduto,
+  codigoProduto,
+  finalidade,
+  recorrente = false,
+  valor
 }) {
   const now = new Date().toISOString();
-  const targets = Array.isArray(targetSector) ? targetSector : [targetSector];
   let pdfUri = null;
 
   if (file && BUCKET_ID) {
@@ -368,37 +385,38 @@ export async function sendDocument({
     pdfUri = fileData || null;
   }
 
-  const created = [];
   const acc = await getAccount();
   const uidCriador = acc?.$id || "";
 
-  for (const target of targets) {
-    const doc = await databases.createDocument(DB_ID, COL_PROPOSTAS, ID.unique(), {
-      titulo: title,
-      descricao: description,
-      setor: senderSector,
-      authorSetor: senderSector,
-      setorDestino: target,
-      status: statuses.PENDENTE,
-      data: now,
-      pdfUri,
-      uidCriador
-    });
+  const doc = await databases.createDocument(DB_ID, COL_PROPOSTAS, ID.unique(), {
+    titulo: title,
+    descricao: description,
+    setor: senderSector,
+    authorSetor: senderSector,
+    setorDestino: "Peças",
+    status: statuses.PENDENTE,
+    data: now,
+    pdfUri, 
+    uidCriador,
+    nomeProduto: optStr(nomeProduto),
+    codigoProduto: optStr(codigoProduto),
+    finalidade: optStr(finalidade),
+    recorrente: Boolean(recorrente),
+    valor: optValor(valor)
+  });
 
-    await databases.createDocument(DB_ID, COL_NOTIFICACOES, ID.unique(), {
-      titulo: `Novo documento do setor ${senderSector}`,
-      mensagem: title,
-      destinatarioSetor: target,
-      propostaId: doc.$id,
-      tipo: "Novo",
-      data: now,
-      lida: false
-    });
+  // Notificação inicial (será atualizada conforme o status mudar)
+  await databases.createDocument(DB_ID, COL_NOTIFICACOES, ID.unique(), {
+    titulo: `Novo pedido de compra — ${senderSector}`,
+    mensagem: title,
+    destinatarioSetor: senderSector, // Notifica o próprio criador para ele acompanhar
+    propostaId: doc.$id,
+    tipo: statuses.PENDENTE,
+    data: now,
+    lida: false
+  });
 
-    created.push(mapDoc(doc));
-  }
-
-  return created;
+  return [mapDoc(doc)];
 }
 
 function normalizeText(s) {
@@ -413,64 +431,52 @@ function eq(a, b) {
   return normalizeText(a) === normalizeText(b);
 }
 
-export async function getReceived(sector, { page = 1, pageSize = 10 } = {}) {
-  console.log("[api.getReceived] filtros", { setorDestino: sector, page, pageSize });
-  const primary = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
-    Query.equal("setorDestino", sector),
-    Query.limit(pageSize),
-    Query.offset(Math.max(0, (page - 1) * pageSize))
+/** Fila centralizada para Peças: PENDENTE ou EM_ATENDIMENTO (setorDestino não entra na lógica). */
+export async function getPecasQueue({ page = 1, pageSize = 10 } = {}) {
+  const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
+    Query.limit(2000)
   ]);
-  const primaryDocs = primary.documents.map(mapDoc);
-  console.log("[api.getReceived] primary docs", primaryDocs.map(d => ({ id: d.id, setorDestino: d.targetSector, setor: d.senderSector, status: d.status })));
-  if (primaryDocs.length > 0) {
-    return {
-      items: primaryDocs,
-      total: typeof primary.total === "number" ? primary.total : primary.documents.length
-    };
-  }
-  const fallbackAll = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
-    Query.limit(1000)
-  ]);
-  const allMapped = fallbackAll.documents.map(mapDoc);
-  const filtered = allMapped.filter(d => {
-    const dest = d.targetSector || "";
-    const alt1 = d.setorDestino || "";
-    const alt2 = d.destino || "";
-    return eq(dest, sector) || eq(alt1, sector) || eq(alt2, sector);
-  });
+  const filtered = res.documents
+    .map(mapDoc)
+    .filter((d) => {
+      const st = normalizeStatus(d.status);
+      return st === statuses.PENDENTE || st === statuses.EM_ATENDIMENTO;
+    })
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
   const total = filtered.length;
   const start = Math.max(0, (page - 1) * pageSize);
-  const items = filtered.slice(start, start + pageSize);
-  console.log("[api.getReceived] fallback docs", items.map(d => ({ id: d.id, setorDestino: d.targetSector, status: d.status })));
-  return { items, total };
+  return { items: filtered.slice(start, start + pageSize), total };
 }
 
-export async function getSent(sector, hidden = [], { page = 1, pageSize = 10 } = {}) {
-  console.log("[api.getSent] filtros", { authorSetor: sector, hidden, page, pageSize });
-  const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
-    Query.equal("authorSetor", sector),
-    Query.limit(1000)
-  ]);
+/** Compat: parâmetro `sector` ignorado; fila é sempre a de Peças. */
+export async function getReceived(_sector, opts = {}) {
+  return getPecasQueue(opts);
+}
+
+/** Pedidos enviados: apenas propostas do usuário logado (uidCriador). */
+export async function getSent(userId, userSector, { page = 1, pageSize = 10 } = {}) {
+  if (!userId) return { items: [], total: 0 };
+  let res;
+  try {
+    res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
+      Query.equal("uidCriador", userId),
+      Query.limit(2000)
+    ]);
+  } catch {
+    res = { documents: [] };
+  }
   let all = res.documents.map(mapDoc);
   if (all.length === 0) {
-    const fb = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
-      Query.limit(1000)
-    ]);
-    all = fb.documents.map(mapDoc).filter(d => {
-      const author = d.senderSector || "";
-      const alt1 = d.authorSetor || "";
-      const alt2 = d.setor || "";
-      return eq(author, sector) || eq(alt1, sector) || eq(alt2, sector);
+    const fb = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [Query.limit(2000)]);
+    all = fb.documents.map(mapDoc).filter((d) => {
+      if (d.uidCriador) return d.uidCriador === userId;
+      return eq(d.senderSector, userSector);
     });
   }
-  all = all.filter(d => {
-    return Array.isArray(hidden) && hidden.length > 0 ? !hidden.includes(d.targetSector) : true;
-  });
+  all.sort((a, b) => new Date(b.date) - new Date(a.date));
   const total = all.length;
   const start = Math.max(0, (page - 1) * pageSize);
-  const items = all.slice(start, start + pageSize);
-  console.log("[api.getSent] docs", items.map(d => ({ id: d.id, destino: d.targetSector, status: d.status })));
-  return { items, total };
+  return { items: all.slice(start, start + pageSize), total };
 }
 
 export function subscribeToProposals(handler) {
@@ -486,39 +492,113 @@ export function subscribeToDocument(id, handler) {
   return subscribe(channel, handler);
 }
 
-export async function evaluateDocument(id, status, reviewerSector, reason) {
+async function assertPecasActor() {
+  const acc = await getAccount();
+  if (!acc) throw new Error("Sessão inválida");
+  const extras = await getOrCreateUserExtras(acc.$id);
+  const sec = extras?.setor || sectorFromEmail(acc.email) || "";
+  if (!isPecasSector(sec)) throw new Error("Apenas o setor Peças pode executar esta ação");
+  return { acc, extras, sector: sec };
+}
+
+async function notifyCreatorSector(currentDoc, newStatus) {
+  // 1. Disparo apenas para status específicos
+  const validStatus = [statuses.EM_ATENDIMENTO, statuses.FINALIZADO, statuses.REJEITADO];
+  if (!validStatus.includes(newStatus)) return null;
+
+  // 2. Padrão da mensagem fixa (usando "pelo setor Peças" para o regex do front-end funcionar)
+  const messages = {
+    [statuses.EM_ATENDIMENTO]: "Documento atendido pelo setor Peças",
+    [statuses.FINALIZADO]: "Documento finalizado pelo setor Peças",
+    [statuses.REJEITADO]: "Documento rejeitado pelo setor Peças"
+  };
+
+  const titulo = messages[newStatus];
+
+  // 3. Atualizar notificação existente em vez de criar uma nova
+  try {
+    const existing = await databases.listDocuments(DB_ID, COL_NOTIFICACOES, [
+      Query.equal("propostaId", currentDoc.$id),
+      Query.limit(1)
+    ]);
+    
+    if (existing.total > 0 || existing.documents.length > 0) {
+      const notifId = existing.documents[0].$id;
+      return await databases.updateDocument(DB_ID, COL_NOTIFICACOES, notifId, {
+        titulo,
+        tipo: newStatus,
+        data: new Date().toISOString(),
+        lida: false // Reseta para "não lida" para o usuário ver o novo status
+      });
+    } else {
+      // Se por algum motivo não existir a notificação inicial, cria uma nova
+      const dest = currentDoc.authorSetor || currentDoc.setor || "";
+      if (isPecasSector(dest)) return null;
+
+      return await databases.createDocument(DB_ID, COL_NOTIFICACOES, ID.unique(), {
+        titulo,
+        mensagem: currentDoc.titulo,
+        destinatarioSetor: dest,
+        propostaId: currentDoc.$id,
+        tipo: newStatus,
+        data: new Date().toISOString(),
+        lida: false
+      });
+    }
+  } catch (err) {
+    console.warn("Falha ao atualizar notificação:", err);
+    return null;
+  }
+}
+
+/** PENDENTE → EM_ATENDIMENTO (somente Peças). */
+export async function assumeOrder(id) {
+  const { acc } = await assertPecasActor();
   const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
-
   if (normalizeStatus(current.status) !== statuses.PENDENTE) {
-    throw new Error("Documento já avaliado");
+    throw new Error("Somente pedidos pendentes podem ser assumidos");
   }
-  const author = current.authorSetor || current.setor || "";
-  const destino = current.setorDestino || current.destino || current.targetSector || "";
-  if (reviewerSector === "RH") {
-    throw new Error("RH não pode avaliar documentos");
-  }
-  if (reviewerSector === "Peças") {
-    if (destino !== "Peças") throw new Error("Peças só pode avaliar documentos destinados a Peças");
-    if (author === "Peças") throw new Error("Peças não pode avaliar documento que ele mesmo enviou");
-  } else {
-    if (destino !== reviewerSector) throw new Error("Setor só pode avaliar documentos destinados ao próprio setor");
-  }
+  const now = new Date().toISOString();
+  const patch = {
+    status: statuses.EM_ATENDIMENTO,
+    assumidoPor: acc.$id,
+    dataAssumido: now
+  };
+  const update = await databases.updateDocument(DB_ID, COL_PROPOSTAS, id, patch);
+  await notifyCreatorSector(current, statuses.EM_ATENDIMENTO);
+  return mapDoc(update);
+}
 
+/** PENDENTE → REJEITADO (somente Peças, motivo obrigatório). */
+export async function rejectOrder(id, reason) {
+  await assertPecasActor();
+  const r = String(reason || "").trim();
+  if (!r) throw new Error("Informe o motivo da rejeição");
+  const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
+  if (normalizeStatus(current.status) !== statuses.PENDENTE) {
+    throw new Error("Somente pedidos pendentes podem ser rejeitados");
+  }
   const update = await databases.updateDocument(DB_ID, COL_PROPOSTAS, id, {
-    status,
-    motivoRecusa: status === statuses.REPROVADO ? reason : null
+    status: statuses.REJEITADO,
+    motivoRecusa: r
   });
+  await notifyCreatorSector(current, statuses.REJEITADO);
+  return mapDoc(update);
+}
 
-  await databases.createDocument(DB_ID, COL_NOTIFICACOES, ID.unique(), {
-    titulo: `${status} pelo setor ${reviewerSector}`,
-    mensagem: current.titulo,
-    destinatarioSetor: current.setor,
-    propostaId: id,
-    tipo: status,
-    data: new Date().toISOString(),
-    lida: false
+/** EM_ATENDIMENTO → FINALIZADO (somente Peças). */
+export async function finalizeOrder(id) {
+  await assertPecasActor();
+  const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
+  if (normalizeStatus(current.status) !== statuses.EM_ATENDIMENTO) {
+    throw new Error("Somente pedidos em atendimento podem ser finalizados");
+  }
+  const now = new Date().toISOString();
+  const update = await databases.updateDocument(DB_ID, COL_PROPOSTAS, id, {
+    status: statuses.FINALIZADO,
+    dataFinalizado: now
   });
-
+  await notifyCreatorSector(current, statuses.FINALIZADO);
   return mapDoc(update);
 }
 
@@ -526,25 +606,22 @@ export async function deleteDocumentIfPending(id) {
   const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
 
   if (normalizeStatus(current.status) !== statuses.PENDENTE) {
-    throw new Error("Apenas documentos pendentes podem ser excluídos");
+    throw new Error("Apenas pedidos pendentes podem ser excluídos");
   }
 
   const acc = await getAccount();
-  const extras = await getOrCreateUserExtras(acc.$id);
-  const userSector = extras?.setor || "";
-  const docAuthor = current.authorSetor || current.setor || "";
-
-  if (userSector !== docAuthor) {
-    throw new Error("Um setor não pode excluir documentos enviados por outro setor");
+  if (!acc) throw new Error("Sessão inválida");
+  const uid = current.uidCriador;
+  if (uid && uid !== acc.$id) {
+    throw new Error("Apenas o autor do pedido pode excluir");
   }
-  if (userSector === "RH" && docAuthor === "Peças") {
-    throw new Error("RH não tem permissão para excluir documentos de Peças");
-  }
-  if (userSector === "Peças" && docAuthor === "RH") {
-    throw new Error("Peças não tem permissão para excluir documentos do RH");
-  }
-  if (userSector !== "RH" && userSector !== "Peças") {
-    throw new Error("Setores comuns não possuem permissão de exclusão");
+  if (!uid) {
+    const extras = await getOrCreateUserExtras(acc.$id);
+    const userSector = extras?.setor || "";
+    const docAuthor = current.authorSetor || current.setor || "";
+    if (userSector !== docAuthor) {
+      throw new Error("Apenas o autor do pedido pode excluir");
+    }
   }
 
   await databases.deleteDocument(DB_ID, COL_PROPOSTAS, id);
@@ -553,7 +630,19 @@ export async function deleteDocumentIfPending(id) {
 
 export async function getDocumentById(id) {
   const d = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
-  return mapDoc(d);
+  const mapped = mapDoc(d);
+  const acc = await getAccount();
+  if (!acc) throw new Error("Sessão inválida");
+  const extras = await getOrCreateUserExtras(acc.$id);
+  const userSector = extras?.setor || sectorFromEmail(acc.email) || "";
+  const isPecas = isPecasSector(userSector);
+  const isCreator = mapped.uidCriador
+    ? mapped.uidCriador === acc.$id
+    : eq(mapped.senderSector, userSector);
+  if (!isPecas && !isCreator) {
+    throw new Error("Acesso negado");
+  }
+  return mapped;
 }
 
 /* ================================
@@ -687,18 +776,37 @@ export async function updatePasswordRecovery({ userId, secret, newPassword, conf
   return true;
 }
 
-export async function getStats(sector, { source = "received" } = {}) {
+/**
+ * @param {{ userId: string, sector: string }} ctx
+ * @param {{ scope?: "mine" | "all" }} opts — `all` apenas para visão global Peças
+ */
+export async function getStats(ctx, { scope = "mine" } = {}) {
+  const userId = ctx?.userId;
+  const sector = ctx?.sector || "";
   try {
-    const base = source === "received" ? Query.equal("setorDestino", sector) : Query.equal("authorSetor", sector);
-    const p = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [base, Query.equal("status", statuses.PENDENTE)]);
-    const a = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [base, Query.equal("status", statuses.APROVADO)]);
-    const r = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [base, Query.equal("status", statuses.REPROVADO)]);
-    const tp = typeof p.total === "number" ? p.total : p.documents.length;
-    const ta = typeof a.total === "number" ? a.total : a.documents.length;
-    const tr = typeof r.total === "number" ? r.total : r.documents.length;
-    return { pending: tp, approved: ta, rejected: tr };
+    const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [Query.limit(5000)]);
+    let docs = res.documents.map(mapDoc);
+    if (scope === "all" && isPecasSector(sector)) {
+      // todos os pedidos
+    } else {
+      docs = docs.filter((d) =>
+        d.uidCriador === userId || (!d.uidCriador && eq(d.senderSector, sector))
+      );
+    }
+    let pending = 0;
+    let emAtendimento = 0;
+    let finalizado = 0;
+    let rejeitado = 0;
+    for (const d of docs) {
+      const n = normalizeStatus(d.status);
+      if (n === statuses.PENDENTE) pending++;
+      else if (n === statuses.EM_ATENDIMENTO) emAtendimento++;
+      else if (n === statuses.FINALIZADO) finalizado++;
+      else if (n === statuses.REJEITADO) rejeitado++;
+    }
+    return { pending, emAtendimento, finalizado, rejeitado };
   } catch {
-    return { pending: 0, approved: 0, rejected: 0 };
+    return { pending: 0, emAtendimento: 0, finalizado: 0, rejeitado: 0 };
   }
 }
 
@@ -707,16 +815,31 @@ export async function getStats(sector, { source = "received" } = {}) {
 ================================ */
 
 function mapDoc(d) {
+  const rawValor = d.valor;
+  let valorNum = null;
+  if (rawValor != null && rawValor !== "") {
+    const n = typeof rawValor === "number" ? rawValor : parseFloat(String(rawValor).replace(",", "."));
+    valorNum = Number.isNaN(n) ? null : n;
+  }
   return {
     id: d.$id,
     title: d.titulo,
     description: d.descricao || "",
-    senderSector: d.authorSetor,
+    senderSector: d.authorSetor || d.setor,
     targetSector: d.setorDestino,
     fileData: d.pdfUri || null,
     date: d.data,
     status: d.status,
-    reason: d.motivoRecusa || null
+    reason: d.motivoRecusa || null,
+    uidCriador: d.uidCriador || "",
+    assumidoPor: d.assumidoPor || null,
+    dataAssumido: d.dataAssumido || null,
+    dataFinalizado: d.dataFinalizado || null,
+    nomeProduto: d.nomeProduto || null,
+    codigoProduto: d.codigoProduto || null,
+    finalidade: d.finalidade ?? null,
+    recorrente: Boolean(d.recorrente),
+    valor: valorNum
   };
 }
 

@@ -523,6 +523,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .summary-icon.orange { background: var(--orange); }
 .summary-icon.green { background: var(--green); }
 .summary-icon.red { background: var(--red); }
+.summary-icon.blue { background: var(--primary); }
 .summary-actions { display: flex; gap: 12px; justify-content: flex-end; }
 .card {
   grid-column: span 12;
@@ -554,6 +555,9 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .status.aprovado { background: rgba(46,125,50,0.12); color: var(--green); border: 1px solid rgba(46,125,50,0.3); font-size: 14px; font-weight: 500; }
 .status.reprovado { background: rgba(188,0,31,0.12); color: var(--red); border: 1px solid rgba(188,0,31,0.3); font-size: 14px; font-weight: 500; }
 .status.pendente { background: rgba(255,152,0,0.12); color: var(--orange); border: 1px solid rgba(255,152,0,0.3); font-size: 14px; font-weight: 500;}
+.status.em_atendimento { background: rgba(37,99,235,0.12); color: var(--primary); border: 1px solid rgba(37,99,235,0.3); font-size: 14px; font-weight: 500; }
+.status.finalizado { background: rgba(46,125,50,0.12); color: var(--green); border: 1px solid rgba(46,125,50,0.3); font-size: 14px; font-weight: 500; }
+.status.rejeitado { background: rgba(188,0,31,0.12); color: var(--red); border: 1px solid rgba(188,0,31,0.3); font-size: 14px; font-weight: 500; }
 .status::before {
   content: "";
   width: 8px; height: 8px; border-radius: 50%;

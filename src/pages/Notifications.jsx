@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 import * as api from "../services/api.js";
-import { statuses } from "../utils/constants.js";
 import NotificationCard from "../components/NotificationCard.jsx";
 
 export default function Notifications() {

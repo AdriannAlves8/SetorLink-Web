@@ -117,7 +117,7 @@ export default function AcceptInvite() {
                 {validating ? "Validando…" : "Validar"}
               </button>
             </div>
-          </div>
+          </div>  
           {invite && (
             <div className="chip" style={{ marginTop: 8 }}>
               {invite.empresa} • {invite.setor}

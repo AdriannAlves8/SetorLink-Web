@@ -18,7 +18,6 @@ import Alert from "../components/Alert.jsx";
 import Sidebar from "../components/Sidebar.jsx";
 import { LogoutIcon } from "../components/Icons.jsx";
 import DocumentDetail from "../pages/DocumentDetail.jsx";
-import GenerateInvite from "../pages/GenerateInvite.jsx";
 import AcceptInvite from "../pages/AcceptInvite.jsx";
 import VerifyEmail from "../pages/VerifyEmail.jsx";
 import Recover from "../pages/Recover.jsx";
@@ -38,6 +37,7 @@ function Protected({ children, permission }) {
 function Layout({ children }) {
   const { user, logout, can, isPrivileged } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -85,16 +85,13 @@ function Layout({ children }) {
           items={[
             { label: "Dashboard", to: "/", end: true, icon: "home" },
             ...(can("view_sent")
-              ? [{ label: "Documentos Enviados", to: "/enviados", icon: "sent" }]
+              ? [{ label: "Pedidos Enviados", to: "/enviados", icon: "sent" }]
               : []),
             ...(can("view_received")
-              ? [{ label: "Documentos Recebidos", to: "/recebidos", icon: "received" }]
+              ? [{ label: "Pedidos para Atender", to: "/recebidos", icon: "received" }]
               : []),
             ...(can("send")
-              ? [{ label: "Enviar Documento", to: "/enviar", icon: "compose" }]
-              : []),
-            ...(can("generate_invite")
-              ? [{ label: "Adicionar Colaborador", to: "/convites/gerar", icon: "user-plus" }]
+              ? [{ label: "Novo pedido", to: "/enviar", icon: "compose" }]
               : []),
             ...(can("notifications")
               ? [{ label: "Notificações", to: "/notificacoes", icon: "bell" }]
@@ -180,17 +177,6 @@ export default function AppRouter() {
       />
 
       <Route
-        path="/convites/gerar"
-        element={
-          <Protected permission="generate_invite">
-            <Layout>
-              <GenerateInvite />
-            </Layout>
-          </Protected>
-        }
-      />
-
-      <Route
         path="/recebidos"
         element={
           <Protected permission="view_received">
@@ -201,7 +187,6 @@ export default function AppRouter() {
         }
       />
 
-      {/* ✅ CORREÇÃO AQUI */}
       <Route
         path="/enviados"
         element={

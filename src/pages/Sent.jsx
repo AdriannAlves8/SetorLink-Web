@@ -1,8 +1,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 import * as api from "../services/api.js";
-import { acl } from "../utils/acl.js";
-import { statuses, statusClass, normalizeStatus } from "../utils/constants.js";
+import { statuses, statusClass, normalizeStatus, statusLabel } from "../utils/constants.js";
 import { NavLink, useNavigate } from "react-router-dom";
 import StatusFilter from "../components/StatusFilter.jsx";
 import * as XLSX from "xlsx";
@@ -10,14 +9,18 @@ import { ExportIcon } from "../components/Icons.jsx";
 import { showToast } from "../components/Toast.jsx";
 
 export default function Sent({ compose = true }) {
-  const { user, allowedDestinations, can } = useAuth();
+  const { user, can } = useAuth();
   const navigate = useNavigate();
 
   const [docs, setDocs] = useState([]);
   const [title, setTitle] = useState("");
+  const [nomeProduto, setNomeProduto] = useState("");
+  const [codigoProduto, setCodigoProduto] = useState("");
   const [description, setDescription] = useState("");
+  const [finalidade, setFinalidade] = useState("");
+  const [recorrente, setRecorrente] = useState(false);
+  const [valor, setValor] = useState("");
   const [file, setFile] = useState(null);
-  const [targets, setTargets] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState("Todos");
@@ -29,12 +32,11 @@ export default function Sent({ compose = true }) {
 
   const canExport = user?.sector === "RH" || user?.sector === "Peças";
 
-  
   async function load() {
     try {
       setLoadingList(true);
-      const hidden = acl[user.sector]?.hidden_sent_from || [];
-      const res = await api.getSent(user.sector, hidden, { page, pageSize });
+      if (!user?.uid) return;
+      const res = await api.getSent(user.uid, user.sector, { page, pageSize });
       setDocs(res.items);
       setTotal(res.total);
     } catch (err) {
@@ -45,41 +47,61 @@ export default function Sent({ compose = true }) {
   }
 
   useEffect(() => {
-    if (user?.sector) load();
-  }, [user?.sector, page, pageSize]);
+    if (user?.sector && user?.uid) load();
+  }, [user?.sector, user?.uid, page, pageSize]);
 
   useEffect(() => {
     const unsub = api.subscribeToProposals(() => {
-      if (user?.sector) load();
+      if (user?.sector && user?.uid) load();
     });
     return () => { try { unsub(); } catch {} };
-  }, [user?.sector, page, pageSize]);
+  }, [user?.sector, user?.uid, page, pageSize]);
+
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") setConfirmDelete(null); };
     if (confirmDelete) window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [confirmDelete]);
 
-  // ----------------------------
-  // FILE HANDLER
-  // ----------------------------
   const onFile = (e) => {
     const f = e.target.files?.[0];
     setFile(f || null);
   };
 
-  // ----------------------------
-  // SEND DOCUMENT
-  // ----------------------------
   const send = async (e) => {
     e.preventDefault();
     setError(null);
 
     if (!can("send")) return;
 
-    if (!title || targets.length === 0 || !file) {
-      setError("Preencha título, selecione pelo menos um destino e arquivo.");
+    const tituloTrim = String(title || "").trim();
+    const descTrim = String(description || "").trim();
+    const nomeProdTrim = String(nomeProduto || "").trim();
+    const codigoProdTrim = String(codigoProduto || "").trim();
+    if (!tituloTrim) {
+      setError("Informe a solicitação de compra.");
       return;
+    }
+    if (!nomeProdTrim) {
+      setError("Informe o nome do produto.");
+      return;
+    }
+    if (!codigoProdTrim) {
+      setError("Informe o código do produto.");
+      return;
+    }
+    if (!descTrim) {
+      setError("Informe a descrição.");
+      return;
+    }
+
+    const valorTrim = String(valor || "").trim();
+    if (valorTrim !== "") {
+      const n = parseFloat(valorTrim.replace(",", "."));
+      if (Number.isNaN(n) || n < 0) {
+        setError("O valor deve ser um número maior ou igual a zero.");
+        return;
+      }
     }
 
     if (file && file.type !== "application/pdf") {
@@ -87,7 +109,7 @@ export default function Sent({ compose = true }) {
       return;
     }
 
-    if (file && file.size > 10 * 1024 * 1024) { // 10MB limit
+    if (file && file.size > 10 * 1024 * 1024) {
       setError("O arquivo é muito grande. O limite é 10MB.");
       return;
     }
@@ -96,23 +118,32 @@ export default function Sent({ compose = true }) {
 
     try {
       await api.sendDocument({
-        title,
-        description,
+        title: tituloTrim,
+        description: descTrim,
         file,
         senderSector: user.sector,
-        targetSector: targets,
+        targetSector: null,
+        nomeProduto: nomeProdTrim,
+        codigoProduto: codigoProdTrim,
+        finalidade,
+        recorrente,
+        valor: valorTrim === "" ? null : valorTrim.replace(",", ".")
       });
 
       setTitle("");
+      setNomeProduto("");
+      setCodigoProduto("");
       setDescription("");
+      setFinalidade("");
+      setRecorrente(false);
+      setValor("");
       setFile(null);
-      setTargets([]);
       await load();
       navigate("/");
-      showToast({ type: "success", message: "Documento enviado" });
+      showToast({ type: "success", message: "Pedido enviado" });
     } catch (err) {
-      setError(err.message || "Falha ao enviar documento.");
-      showToast({ type: "error", message: err.message || "Falha ao enviar documento" });
+      setError(err.message || "Falha ao enviar pedido.");
+      showToast({ type: "error", message: err.message || "Falha ao enviar pedido" });
     } finally {
       setLoading(false);
     }
@@ -122,36 +153,30 @@ export default function Sent({ compose = true }) {
     try {
       await api.deleteDocumentIfPending(id);
       await load();
-      showToast({ type: "success", message: "Documento excluído" });
+      showToast({ type: "success", message: "Pedido excluído" });
     } catch (err) {
       showToast({ type: "error", message: err.message || "Erro ao excluir documento" });
     }
   };
 
-  // ----------------------------
-  // FILTERED DOCUMENTS
-  // ----------------------------
   const filteredDocs = useMemo(() => {
     return docs.filter((d) =>
-      filter === "Todos" ? true : d.status === filter
+      filter === "Todos" ? true : normalizeStatus(d.status) === filter
     );
   }, [docs, filter]);
 
-  // ----------------------------
-  // EXPORT TO EXCEL
-  // ----------------------------
   const exportToExcel = () => {
     try {
       const evaluated = docs.filter(
-        (d) => d.status !== statuses.PENDENTE
+        (d) => normalizeStatus(d.status) !== statuses.PENDENTE
       );
 
       if (evaluated.length === 0) {
-        alert("Não há documentos avaliados para exportar.");
+        alert("Não há pedidos com status já processado para exportar.");
         return;
       }
 
-      const headers = ["Título","Descrição","Enviado por","Recebido por","Status","Mot.Reprovação","Documento"];
+      const headers = ["Título","Descrição","Enviado por","Status","Motivo","Documento"];
       const rows = evaluated.map((d) => {
         let docUrl = "";
         try { if (d.fileData) docUrl = api.getFileViewUrl(d.fileData); } catch {}
@@ -160,8 +185,7 @@ export default function Sent({ compose = true }) {
           d.title,
           d.description || "",
           d.senderSector || "",
-          Array.isArray(d.targetSector) ? d.targetSector.join(", ") : d.targetSector || "",
-          d.status,
+          statusLabel(d.status),
           d.reason || "",
           prettyLink
         ];
@@ -173,7 +197,6 @@ export default function Sent({ compose = true }) {
         { wch: 50 },
         { wch: 16 },
         { wch: 18 },
-        { wch: 12 },
         { wch: 20 },
         { wch: 10 }
       ];
@@ -182,12 +205,12 @@ export default function Sent({ compose = true }) {
       XLSX.utils.book_append_sheet(
         workbook,
         worksheet,
-        "Documentos Avaliados"
+        "Pedidos"
       );
 
       XLSX.writeFile(
         workbook,
-        `documentos_avaliados_${user.sector}_${Date.now()}.xlsx`
+        `pedidos_${user.sector}_${Date.now()}.xlsx`
       );
     } catch (err) {
       console.error("Erro ao exportar:", err);
@@ -195,90 +218,160 @@ export default function Sent({ compose = true }) {
     }
   };
 
+  const canDeleteRow = (d) => {
+    if (!can("delete_if_pending")) return false;
+    if (normalizeStatus(d.status) !== statuses.PENDENTE) return false;
+    if (d.uidCriador) return user.uid === d.uidCriador;
+    return d.senderSector === user.sector;
+  };
+
   return (
     <>
       <div className="content-header">
         <div className="page-title">
-          {compose ? "Enviar Documento" : "Enviados"}
+          {compose ? "Criar Pedido" : "Pedidos enviados"}
         </div>
         <div className="chip">{user?.sector}</div>
       </div>
 
-      {/* ---------------- COMPOSE ---------------- */}
       {compose && can("send") && (
         <form className="form stack" onSubmit={send}>
-          <div className="form-row">
-            <label>Arquivo</label>
-            <input type="file" onChange={onFile} />
+          <div className="helper" style={{ color: "var(--muted)", marginBottom: 4 }}>
+            O pedido será analisado exclusivamente pelo setor Peças.
           </div>
 
-          <div className="form-row">
-            <label>Título</label>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Título do documento"
-            />
-          </div>
-
-          <div className="form-row">
-            <label>Descrição</label>
-            <textarea
-              rows={4}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Descrição"
-            />
-          </div>
-
-          <div className="form-row">
-            <label>Destinos (Selecione um ou mais)</label>
-            <div className="destinations-selector">
-              {allowedDestinations().map((d) => {
-                const isSelected = targets.includes(d);
-                return (
-                  <button
-                    key={d}
-                    type="button"
-                    className={`dest-chip ${isSelected ? "active" : ""}`}
-                    onClick={() =>
-                      isSelected
-                        ? setTargets(targets.filter((t) => t !== d))
-                        : setTargets([...targets, d])
-                    }
-                  >
-                    <span className="chip-check">
-                      {isSelected ? (
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                      ) : (
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle></svg>
-                      )}
-                    </span>
-                    {d}
-                  </button>
-                );
-              })}
+          <section className="stack" style={{ gap: 12 }} aria-labelledby="sec-dados-pedido">
+            <h2 id="sec-dados-pedido" style={{ fontSize: "0.95rem", fontWeight: 700, margin: "8px 0 0", color: "var(--muted)" }}>
+              1. Dados do pedido
+            </h2>
+            <div className="form-row">
+              <label htmlFor="sol-compra">Solicitação de compra <span style={{ color: "var(--red)" }}>*</span></label>
+              <input
+                id="sol-compra"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Identifique a solicitação"
+                autoComplete="off"
+              />
             </div>
-            {targets.length > 0 && (
-              <div className="helper" style={{ marginTop: 4 }}>
-                {targets.length} {targets.length === 1 ? "setor selecionado" : "setores selecionados"}
-              </div>
-            )}
-          </div>
+            <div className="form-row">
+              <label htmlFor="nome-produto">Nome do produto <span style={{ color: "var(--red)" }}>*</span></label>
+              <input
+                id="nome-produto"
+                value={nomeProduto}
+                onChange={(e) => setNomeProduto(e.target.value)}
+                placeholder="Obrigatório"
+                autoComplete="off"
+              />
+            </div>
+            <div className="form-row">
+              <label htmlFor="codigo-produto">Código do produto <span style={{ color: "var(--red)" }}>*</span></label>
+              <input
+                id="codigo-produto"
+                value={codigoProduto}
+                onChange={(e) => setCodigoProduto(e.target.value)}
+                placeholder="Obrigatório"
+                autoComplete="off"
+              />
+            </div>
+          </section>
+
+          <div className="divider" />
+
+          <section className="stack" style={{ gap: 12 }} aria-labelledby="sec-detalhes">
+            <h2 id="sec-detalhes" style={{ fontSize: "0.95rem", fontWeight: 700, margin: 0, color: "var(--muted)" }}>
+              2. Detalhes
+            </h2>
+            <div className="form-row">
+              <label htmlFor="desc-pedido">Descrição <span style={{ color: "var(--red)" }}>*</span></label>
+              <textarea
+                id="desc-pedido"
+                rows={4}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Descreva o pedido com o nível de detalhe necessário"
+              />
+            </div>
+            <div className="form-row">
+              <label htmlFor="finalidade-pedido">Finalidade</label>
+              <textarea
+                id="finalidade-pedido"
+                rows={3}
+                value={finalidade}
+                onChange={(e) => setFinalidade(e.target.value)}
+                placeholder="Opcional — para que o material será utilizado"
+              />
+            </div>
+          </section>
+
+          <div className="divider" />
+
+          <section aria-labelledby="sec-controle">
+            <h2 id="sec-controle" style={{ fontSize: "0.95rem", fontWeight: 700, margin: "0 0 8px", color: "var(--muted)" }}>
+              3. Controle
+            </h2>
+            <div className="form-row" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <input
+                id="recorrente-switch"
+                type="checkbox"
+                checked={recorrente}
+                onChange={(e) => setRecorrente(e.target.checked)}
+                style={{ width: "auto", minWidth: 18, height: 18, cursor: "pointer" }}
+              />
+              <label htmlFor="recorrente-switch" style={{ marginBottom: 0, cursor: "pointer" }}>
+                Recorrente
+              </label>
+            </div>
+          </section>
+
+          <div className="divider" />
+
+          <section className="stack" style={{ gap: 8 }} aria-labelledby="sec-valor">
+            <h2 id="sec-valor" style={{ fontSize: "0.95rem", fontWeight: 700, margin: 0, color: "var(--muted)" }}>
+              4. Valor
+            </h2>
+            <div className="form-row">
+              <label htmlFor="valor-pedido">Valor (R$)</label>
+              <input
+                id="valor-pedido"
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="0.01"
+                value={valor}
+                onChange={(e) => setValor(e.target.value)}
+                placeholder="Opcional — 0 ou mais"
+              />
+            </div>
+          </section>
+
+          <div className="divider" />
+
+          <section className="stack" style={{ gap: 8 }} aria-labelledby="sec-anexo">
+            <h2 id="sec-anexo" style={{ fontSize: "0.95rem", fontWeight: 700, margin: 0, color: "var(--muted)" }}>
+              5. Anexo
+            </h2>
+            <div className="form-row">
+              <label htmlFor="pdf-pedido">Documento PDF</label>
+              <input id="pdf-pedido" type="file" accept="application/pdf" onChange={onFile} />
+              <div className="helper" style={{ color: "var(--muted)", marginTop: 4 }}>Opcional — anexe quando houver documento.</div>
+            </div>
+          </section>
 
           {error && (
-            <div style={{ color: "var(--red)" }}>{error}</div>
+            <div style={{ color: "var(--red)" }} role="alert">{error}</div>
           )}
 
-          <button className="btn primary" disabled={loading}>
-            {loading ? "Enviando..." : "Enviar"}
-          </button>
+          <div className="actions" style={{ justifyContent: "flex-start", marginTop: 8 }}>
+            <button className="btn primary" type="submit" disabled={loading}>
+              {loading ? "Enviando..." : "Criar Pedido"}
+            </button>
+          </div>
 
           <div className="divider" />
         </form>
       )}
 
-      {/* ---------------- LIST ---------------- */}
       {!compose && (
         <>
           <StatusFilter value={filter} onChange={setFilter} />
@@ -287,7 +380,7 @@ export default function Sent({ compose = true }) {
             <div className="actions" style={{ marginBottom: 8, justifyContent: "flex-end" }}>
               <button className="btn primary export-btn" onClick={exportToExcel}>
                 <ExportIcon />
-                Exportar Documentos Avaliados
+                Exportar pedidos processados
               </button>
             </div>
           )}
@@ -298,9 +391,8 @@ export default function Sent({ compose = true }) {
                 <thead>
                   <tr>
                     <th>Título</th>
-                    <th>Destino</th>
                     <th>Data</th>
-                    <th>status</th>
+                    <th>Status</th>
                     <th>Ações</th>
                   </tr>
                 </thead>
@@ -308,7 +400,6 @@ export default function Sent({ compose = true }) {
                   {loadingList && Array.from({ length: 6 }).map((_, i) => (
                     <tr key={`skeleton-${i}`}>
                       <td><div className="skeleton" style={{ width: 160 }} /></td>
-                      <td><div className="skeleton" style={{ width: 120 }} /></td>
                       <td><div className="skeleton" style={{ width: 140 }} /></td>
                       <td><div className="skeleton" style={{ width: 80 }} /></td>
                       <td><div className="skeleton" style={{ width: 100 }} /></td>
@@ -318,23 +409,17 @@ export default function Sent({ compose = true }) {
                     <tr key={d.id}>
                       <td>{d.title}</td>
                       <td>
-                        {Array.isArray(d.targetSector)
-                          ? d.targetSector.join(", ")
-                          : d.targetSector}
-                      </td>
-                      <td>
                         {new Date(d.date).toLocaleString()}
                       </td>
                       <td>
                         <span className={`status ${statusClass(d.status)}`}>
-                          {normalizeStatus(d.status)}
+                          {statusLabel(d.status)}
                         </span>
                       </td>
                       <td>
                         <NavLink className="btn" to={`/documento/${d.id}`}>Detalhes</NavLink>
 
-                        {normalizeStatus(d.status) === statuses.PENDENTE &&
-                          can("delete_if_pending") && (
+                        {canDeleteRow(d) && (
                             <button
                               className="btn danger"
                               onClick={() => setConfirmDelete({ id: d.id, title: d.title })}
@@ -348,8 +433,8 @@ export default function Sent({ compose = true }) {
 
                   {!loadingList && filteredDocs.length === 0 && (
                     <tr>
-                      <td colSpan={5} style={{ color: "var(--color-muted)" }}>
-                        Nenhum documento encontrado
+                      <td colSpan={4} style={{ color: "var(--color-muted)" }}>
+                        Nenhum pedido encontrado
                       </td>
                     </tr>
                   )}
@@ -379,7 +464,7 @@ export default function Sent({ compose = true }) {
         <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
           <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <div className="card-header">
-              <div className="card-title">Excluir Documento</div>
+              <div className="card-title">Excluir pedido</div>
             </div>
             <div className="stack">
               <div style={{ color: "var(--muted)" }}>
@@ -405,5 +490,3 @@ export default function Sent({ compose = true }) {
     </>
   );
 }
-
-// ---------------- UTIL ----------------

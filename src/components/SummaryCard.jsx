@@ -5,7 +5,8 @@ export default function SummaryCard({ color, title, value, buttonText, buttonTo 
   const cls =
     color === "orange" ? "summary-icon orange" :
     color === "green" ? "summary-icon green" :
-    color === "red" ? "summary-icon red" : "summary-icon";
+    color === "red" ? "summary-icon red" :
+    color === "blue" ? "summary-icon blue" : "summary-icon";
   return (
     <div className="card col-4 summary-card">
       <div className="summary-head">

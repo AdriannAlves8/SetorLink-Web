@@ -1,6 +1,6 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { statusClass, normalizeStatus } from "../utils/constants.js";
+import { statusClass, statusLabel } from "../utils/constants.js";
 
 export default function DocumentCard({ title, status, meta1, meta2, actionLabel, actionTo, className }) {
   const cls = statusClass(status);
@@ -14,7 +14,7 @@ export default function DocumentCard({ title, status, meta1, meta2, actionLabel,
         </div>
       </div>
       <div className="dc-status">
-        <span className={`status ${cls}`}>{normalizeStatus(status)}</span>
+        <span className={`status ${cls}`}>{statusLabel(status)}</span>
       </div>
       <div className="dc-actions">
         <NavLink className="btn primary" to={actionTo}>{actionLabel}</NavLink>

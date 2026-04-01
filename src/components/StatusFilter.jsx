@@ -1,13 +1,20 @@
 import React from "react";
-import { statuses } from "../utils/constants.js";
+import { statuses, statusLabel } from "../utils/constants.js";
 
-const OPTIONS = ["Todos", statuses.PENDENTE, statuses.APROVADO, statuses.REPROVADO];
+const OPTIONS = [
+  "Todos",
+  statuses.PENDENTE,
+  statuses.EM_ATENDIMENTO,
+  statuses.FINALIZADO,
+  statuses.REJEITADO
+];
 
 export default function StatusFilter({ value, onChange }) {
   return (
-    <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+    <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
       {OPTIONS.map(opt => {
         const active = value === opt;
+        const label = opt === "Todos" ? "Todos" : statusLabel(opt);
         return (
           <button
             key={opt}
@@ -18,7 +25,7 @@ export default function StatusFilter({ value, onChange }) {
             }}
             onClick={() => onChange(opt)}
           >
-            {opt}
+            {label}
           </button>
         );
       })}

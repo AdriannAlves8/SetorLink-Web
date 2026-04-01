@@ -2,23 +2,29 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as api from "../services/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
-import { statuses, statusClass, normalizeStatus } from "../utils/constants.js";
+import { statuses, statusClass, normalizeStatus, statusLabel } from "../utils/constants.js";
+import { showToast } from "../components/Toast.jsx";
 
 export default function Evaluate() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { can } = useAuth();
   const [doc, setDoc] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [reason, setReason] = useState("");
   const [openError, setOpenError] = useState(null);
   const [preview, setPreview] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   useEffect(() => {
     (async () => {
-      const d = await api.getDocumentById(id);
-      setDoc(d);
+      try {
+        const d = await api.getDocumentById(id);
+        setDoc(d);
+      } catch (e) {
+        setLoadError(e.message || "Erro ao carregar pedido");
+      }
     })();
   }, [id]);
 
@@ -33,31 +39,18 @@ export default function Evaluate() {
     }
   };
 
-  const approve = async () => {
-    // Bloqueia tentativa de reavaliação via UI
-    if (doc && normalizeStatus(doc.status) !== statuses.PENDENTE) { setError("Este documento já foi avaliado."); return; }
-    setLoading(true);
-    setError(null);
-    try {
-      const d = await api.evaluateDocument(id, statuses.APROVADO, user.sector);
-      setDoc(d);
-      navigate("/");
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+  const assume = async () => {
+    if (!doc || normalizeStatus(doc.status) !== statuses.PENDENTE) {
+      setError("Este pedido não está pendente.");
+      return;
     }
-  };
-  const reject = async () => {
-    // Bloqueia tentativa de reavaliação via UI
-    if (doc && normalizeStatus(doc.status) !== statuses.PENDENTE) { setError("Este documento já foi avaliado."); return; }
-    if (!reason.trim()) { setError("Informe o motivo da reprovação."); return; }
     setLoading(true);
     setError(null);
     try {
-      const d = await api.evaluateDocument(id, statuses.REPROVADO, user.sector, reason);
+      const d = await api.assumeOrder(id);
       setDoc(d);
-      navigate("/");
+      showToast({ type: "success", message: "Pedido assumido" });
+      navigate("/recebidos");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -65,18 +58,65 @@ export default function Evaluate() {
     }
   };
 
+  const reject = async () => {
+    if (!doc || normalizeStatus(doc.status) !== statuses.PENDENTE) {
+      setError("Este pedido não está pendente.");
+      return;
+    }
+    if (!reason.trim()) {
+      setError("Informe o motivo da rejeição.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const d = await api.rejectOrder(id, reason);
+      setDoc(d);
+      showToast({ type: "success", message: "Pedido rejeitado" });
+      navigate("/recebidos");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const finalize = async () => {
+    if (!doc || normalizeStatus(doc.status) !== statuses.EM_ATENDIMENTO) {
+      setError("Este pedido não está em atendimento.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const d = await api.finalizeOrder(id);
+      setDoc(d);
+      showToast({ type: "success", message: "Pedido finalizado" });
+      navigate("/recebidos");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loadError) return <div style={{ padding: 24 }}>{loadError}</div>;
   if (!doc) return <div style={{ padding: 24 }}>Carregando...</div>;
+
+  const st = normalizeStatus(doc.status);
+  const isPecas = can("evaluate");
+
   return (
     <>
       <div className="content-header">
-        <div className="page-title">Avaliar Documento</div>
+        <div className="page-title">Atender pedido</div>
       </div>
       <div className="grid">
         <div className="card col-8">
           <div className="card-header">
             <div className="card-title">{doc.title}</div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span className={`status ${statusClass(doc.status)}`}>{normalizeStatus(doc.status)}</span>
+              <span className={`status ${statusClass(doc.status)}`}>{statusLabel(doc.status)}</span>
               {doc.fileData ? (
                 <>
                   <button className="btn primary" onClick={openFile}>Abrir</button>
@@ -100,33 +140,94 @@ export default function Evaluate() {
           <div className="card-header">
             <div className="card-title">Informações</div>
           </div>
-          <div className="stack">
-            <div className="chip">Remetente: {doc.senderSector}</div>
-            <div className="chip">Destino: {doc.targetSector}</div>
-            <div className="chip">Data: {new Date(doc.date).toLocaleString()}</div>
-            <div className="stack">
-              <div style={{ fontWeight: 700 }}>Descrição</div>
-              <div>{doc.description || "-"}</div>
+          <div className="stack" style={{ gap: 12 }}>
+            <div className="chip" style={{ width: "100%", justifyContent: "flex-start" }}>
+              <span style={{ fontWeight: 600, marginRight: 4 }}>Remetente:</span> {doc.senderSector}
             </div>
-            {normalizeStatus(doc.status) === statuses.REPROVADO && doc.reason && (
+            <div className="chip" style={{ width: "100%", justifyContent: "flex-start" }}>
+              <span style={{ fontWeight: 600, marginRight: 4 }}>Data:</span> {new Date(doc.date).toLocaleString()}
+            </div>
+            
+            <div className="stack" style={{ marginTop: 8, padding: "12px", background: "rgba(0,0,0,0.02)", borderRadius: 12, border: "1px solid var(--border)" }}>
+              <div style={{ fontWeight: 700, fontSize: "0.8rem", color: "var(--muted)", marginBottom: 8, letterSpacing: "0.05rem" }}>DADOS DO PEDIDO</div>
+              <div className="stack" style={{ gap: 6 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem" }}>
+                  <span style={{ color: "var(--muted)" }}>Produto:</span>
+                  <span style={{ fontWeight: 500, textAlign: "right" }}>{doc.nomeProduto || "—"}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem" }}>
+                  <span style={{ color: "var(--muted)" }}>Código:</span>
+                  <span style={{ fontWeight: 500, textAlign: "right" }}>{doc.codigoProduto || "—"}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem" }}>
+                  <span style={{ color: "var(--muted)" }}>Finalidade:</span>
+                  <span style={{ fontWeight: 500, textAlign: "right" }}>{doc.finalidade || "—"}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem" }}>
+                  <span style={{ color: "var(--muted)" }}>Controle:</span>
+                  <span style={{ fontWeight: 500, textAlign: "right" }}>{doc.recorrente ? "Recorrente" : "Único"}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "1rem", marginTop: 4, paddingTop: 4, borderTop: "1px dashed var(--border)" }}>
+                  <span style={{ fontWeight: 600 }}>Valor:</span>
+                  <span style={{ fontWeight: 700, color: "var(--primary)" }}>
+                    {doc.valor ? `R$ ${doc.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="stack" style={{ gap: 6 }}>
+              {doc.dataAssumido && (
+                <div className="chip" style={{ width: "100%", justifyContent: "flex-start", fontSize: "0.85rem", opacity: 0.8 }}>
+                  <span style={{ fontWeight: 600, marginRight: 4 }}>Assumido em:</span> {new Date(doc.dataAssumido).toLocaleString()}
+                </div>
+              )}
+              {doc.dataFinalizado && (
+                <div className="chip" style={{ width: "100%", justifyContent: "flex-start", fontSize: "0.85rem", opacity: 0.8 }}>
+                  <span style={{ fontWeight: 600, marginRight: 4 }}>Finalizado em:</span> {new Date(doc.dataFinalizado).toLocaleString()}
+                </div>
+              )}
+            </div>
+
+            <div className="stack" style={{ marginTop: 8 }}>
+              <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>Descrição</div>
+              <div style={{ 
+                whiteSpace: "pre-wrap", 
+                padding: "12px", 
+                background: "var(--bg-alt, #f9f9f9)", 
+                borderRadius: 8,
+                fontSize: "0.95rem",
+                lineHeight: "1.5",
+                border: "1px solid var(--border)"
+              }}>
+                {doc.description || "Nenhuma descrição fornecida."}
+              </div>
+            </div>
+            {normalizeStatus(doc.status) === statuses.REJEITADO && doc.reason && (
               <div className="stack">
-                <div style={{ fontWeight: 700 }}>Motivo da reprovação</div>
+                <div style={{ fontWeight: 700 }}>Motivo da rejeição</div>
                 <div>{doc.reason}</div>
               </div>
             )}
-            {normalizeStatus(doc.status) === statuses.PENDENTE ? (
+            {isPecas && st === statuses.PENDENTE && (
               <>
                 <div className="stack">
-                  <div style={{ fontWeight: 700 }}>Motivo da reprovação</div>
+                  <div style={{ fontWeight: 700 }}>Motivo da rejeição (obrigatório para rejeitar)</div>
                   <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Descreva o motivo" />
                 </div>
                 <div className="summary-actions">
-                  <button className="btn success" disabled={loading} onClick={approve}>Aprovar</button>
-                  <button className="btn danger" disabled={loading} onClick={reject}>Reprovar</button>
+                  <button className="btn success" disabled={loading} onClick={assume}>Assumir pedido</button>
+                  <button className="btn danger" disabled={loading} onClick={reject}>Rejeitar</button>
                 </div>
               </>
-            ) : (
-              <div className="chip">Este documento já foi avaliado.</div>
+            )}
+            {isPecas && st === statuses.EM_ATENDIMENTO && (
+              <div className="summary-actions">
+                <button className="btn primary" disabled={loading} onClick={finalize}>Finalizar</button>
+              </div>
+            )}
+            {(!isPecas || (st !== statuses.PENDENTE && st !== statuses.EM_ATENDIMENTO)) && (
+              <div className="chip">Nenhuma ação disponível para seu perfil neste status.</div>
             )}
             {error && <div className="chip" style={{ color: "var(--red)" }}>{error}</div>}
           </div>

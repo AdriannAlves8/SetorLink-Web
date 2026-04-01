@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 import * as api from "../services/api.js";
-import { statuses, statusClass, normalizeStatus } from "../utils/constants.js";
-import { acl } from "../utils/acl.js";
+import { statuses, normalizeStatus } from "../utils/constants.js";
 import { NavLink } from "react-router-dom";
 import Header from "../components/Header.jsx";
 import SummaryCard from "../components/SummaryCard.jsx";
@@ -14,33 +13,43 @@ export default function Dashboard() {
   const [received, setReceived] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [sent, setSent] = useState([]);
-  const [stats, setStats] = useState({ pending: 0, approved: 0, rejected: 0 });
+  const [stats, setStats] = useState({
+    pending: 0,
+    emAtendimento: 0,
+    finalizado: 0,
+    rejeitado: 0
+  });
 
   useEffect(() => {
     const fetchData = async () => {
       if (!user || !user.sector) return;
-      const r = await api.getReceived(user.sector, { page: 1, pageSize: 50 });
-      setReceived(r.items);
+      const scope = can("view_received") ? "all" : "mine";
+      const st = await api.getStats({ userId: user.uid, sector: user.sector }, { scope });
+      setStats(st);
+
+      if (can("view_received")) {
+        const r = await api.getPecasQueue({ page: 1, pageSize: 50 });
+        setReceived(r.items);
+      } else {
+        setReceived([]);
+      }
+
       const n = await api.getNotifications(user.sector);
       setNotifications(n);
+
       if (can("view_sent")) {
-        const hidden = acl[user.sector]?.hidden_sent_from || [];
-        const s = await api.getSent(user.sector, hidden, { page: 1, pageSize: 50 });
+        const s = await api.getSent(user.uid, user.sector, { page: 1, pageSize: 50 });
         setSent(s.items);
       } else {
         setSent([]);
       }
-      const st = await api.getStats(user.sector, { source: can("view_received") ? "received" : "sent" });
-      setStats(st);
     };
 
     fetchData();
 
-    // Inscrição em Tempo Real
     const unsubscribe = api.subscribe(
       [api.CHANNELS.PROPOSTAS, api.CHANNELS.NOTIFICACOES],
-      (response) => {
-        // Recarregar dados se houver qualquer mudança nas coleções relevantes
+      () => {
         fetchData();
       }
     );
@@ -55,11 +64,12 @@ export default function Dashboard() {
       unsubscribe();
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [user.sector, can]);
+  }, [user?.sector, user?.uid]);
 
   const pendingCount = stats.pending;
-  const approvedCount = stats.approved;
-  const rejectedCount = stats.rejected;
+  const emAtendimentoCount = stats.emAtendimento;
+  const finalizadoCount = stats.finalizado;
+  const rejeitadoCount = stats.rejeitado;
 
   return (
     <>
@@ -67,37 +77,31 @@ export default function Dashboard() {
       <div className="dashboard-hero">
         <div className="hero-content">
           <div className="hero-title">Olá, {user.name || user.sector}</div>
-          <div className="hero-subtitle">Visão geral dos documentos enviados</div>
+          <div className="hero-subtitle">Visão geral dos pedidos de compra</div>
           <div className="hero-actions">
-            {can("send") && <NavLink className="btn primary" to="/enviar">Enviar Documento</NavLink>}
-            {can("view_received") && <NavLink className="btn" to="/recebidos">Ver Recebidos</NavLink>}
-            {can("view_sent") && <NavLink className="btn" to="/enviados">Ver Enviados</NavLink>}
+            {can("send") && <NavLink className="btn primary" to="/enviar">Novo pedido</NavLink>}
+            {can("view_received") && <NavLink className="btn" to="/recebidos">Pedidos para atender</NavLink>}
+            {can("view_sent") && <NavLink className="btn" to="/enviados">Meus pedidos</NavLink>}
           </div>
         </div>
       </div>
       <div className="grid">
-        <SummaryCard color="orange" title="Pendentes" value={pendingCount} buttonText={can("view_received") ? "Ver recebidos" : undefined} buttonTo="/recebidos" />
-        <SummaryCard color="green" title="Aprovados" value={approvedCount} />
-        <SummaryCard color="red" title="Reprovados" value={rejectedCount} />
+        <SummaryCard color="orange" title="Pendentes" value={pendingCount} buttonText={can("view_received") ? "Ver fila" : undefined} buttonTo="/recebidos" />
+        <SummaryCard color="blue" title="Em atendimento" value={emAtendimentoCount} buttonText={can("view_received") ? "Ver fila" : undefined} buttonTo="/recebidos" />
+        <SummaryCard color="green" title="Finalizados" value={finalizadoCount} />
+        <SummaryCard color="red" title="Rejeitados" value={rejeitadoCount} />
         {can("view_received") && (
           <div className="card col-12">
             <div className="card-header">
-              <div className="card-title">Recebidos Recentes</div>
+              <div className="card-title">Fila — pedidos recentes</div>
               <NavLink className="btn small" to="/recebidos">Ver todos</NavLink>
             </div>
             <div className="doc-grid">
               {[...received].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,6).map(d => {
-                const isPending = normalizeStatus(d.status) === statuses.PENDENTE;
-                const canEvaluateDoc = (() => {
-                  if (!isPending) return false;
-                  if (user.sector === "RH") return false;
-                  if (user.sector === "Peças") {
-                    return d.targetSector === "Peças" && d.senderSector !== "Peças";
-                  }
-                  return d.targetSector === user.sector;
-                })();
-                const label = isPending && canEvaluateDoc ? "Avaliar" : "Detalhes";
-                const to = isPending && canEvaluateDoc ? `/avaliar/${d.id}` : `/documento/${d.id}`;
+                const st = normalizeStatus(d.status);
+                const canAtender = can("evaluate") && (st === statuses.PENDENTE || st === statuses.EM_ATENDIMENTO);
+                const label = canAtender ? "Atender" : "Detalhes";
+                const to = canAtender ? `/avaliar/${d.id}` : `/documento/${d.id}`;
                 return (
                   <DocumentCard
                     key={d.id}
@@ -111,14 +115,14 @@ export default function Dashboard() {
                   />
                 );
               })}
-              {received.length === 0 && <div style={{ color: "var(--color-muted)" }}>Sem documentos no momento</div>}
+              {received.length === 0 && <div style={{ color: "var(--color-muted)" }}>Nenhum pedido na fila</div>}
             </div>
           </div>
         )}
         {can("view_sent") && (
           <div className="card col-12">
             <div className="card-header">
-              <div className="card-title">Enviados Recentes</div>
+              <div className="card-title">Meus pedidos recentes</div>
               <NavLink className="btn small" to="/enviados">Ver todos</NavLink>
             </div>
             <div className="doc-grid">
@@ -127,14 +131,14 @@ export default function Dashboard() {
                   key={d.id}
                   title={d.title}
                   status={d.status}
-                  meta1={`Para: ${d.targetSector}`}
+                  meta1={`Setor: ${d.senderSector}`}
                   meta2={new Date(d.date).toLocaleString()}
                   actionLabel={"Detalhes"}
                   actionTo={`/documento/${d.id}`}
                   className="col-6"
                />
               ))}
-              {sent.length === 0 && <div style={{ color: "var(--color-muted)" }}>Sem documentos no momento</div>}
+              {sent.length === 0 && <div style={{ color: "var(--color-muted)" }}>Nenhum pedido no momento</div>}
             </div>
           </div>
         )}
