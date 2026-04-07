@@ -28,7 +28,7 @@ export default function Dashboard() {
       setStats(st);
 
       if (can("view_received")) {
-        const r = await api.getPecasQueue({ page: 1, pageSize: 50 });
+        const r = await api.getReceived(user.sector, { page: 1, pageSize: 50 });
         setReceived(r.items);
       } else {
         setReceived([]);
@@ -99,7 +99,10 @@ export default function Dashboard() {
             <div className="doc-grid">
               {[...received].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,6).map(d => {
                 const st = normalizeStatus(d.status);
-                const canAtender = can("evaluate") && (st === statuses.PENDENTE || st === statuses.EM_ATENDIMENTO);
+                const isPecas = user.sector === "Peças";
+                const isTarget = d.targetSector === user.sector;
+                const canAtender = (isPecas && (st === statuses.PENDENTE || st === statuses.APROVADO_SETOR || st === statuses.EM_ATENDIMENTO))
+                                 || (isTarget && st === statuses.ENCAMINHADO);
                 const label = canAtender ? "Atender" : "Detalhes";
                 const to = canAtender ? `/avaliar/${d.id}` : `/documento/${d.id}`;
                 return (
@@ -131,7 +134,7 @@ export default function Dashboard() {
                   key={d.id}
                   title={d.title}
                   status={d.status}
-                  meta1={`Setor: ${d.senderSector}`}
+                  meta1={`Para: ${d.targetSector || "Peças"}`}
                   meta2={new Date(d.date).toLocaleString()}
                   actionLabel={"Detalhes"}
                   actionTo={`/documento/${d.id}`}

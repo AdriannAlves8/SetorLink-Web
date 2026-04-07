@@ -391,6 +391,8 @@ export default function Sent({ compose = true }) {
                 <thead>
                   <tr>
                     <th>Título</th>
+                    <th>Remetente</th>
+                    <th>Destino</th>
                     <th>Data</th>
                     <th>Status</th>
                     <th>Ações</th>
@@ -400,6 +402,8 @@ export default function Sent({ compose = true }) {
                   {loadingList && Array.from({ length: 6 }).map((_, i) => (
                     <tr key={`skeleton-${i}`}>
                       <td><div className="skeleton" style={{ width: 160 }} /></td>
+                      <td><div className="skeleton" style={{ width: 100 }} /></td>
+                      <td><div className="skeleton" style={{ width: 100 }} /></td>
                       <td><div className="skeleton" style={{ width: 140 }} /></td>
                       <td><div className="skeleton" style={{ width: 80 }} /></td>
                       <td><div className="skeleton" style={{ width: 100 }} /></td>
@@ -408,6 +412,8 @@ export default function Sent({ compose = true }) {
                   {!loadingList && filteredDocs.map((d) => (
                     <tr key={d.id}>
                       <td>{d.title}</td>
+                      <td>{d.senderSector}</td>
+                      <td>{d.targetSector || "Peças"}</td>
                       <td>
                         {new Date(d.date).toLocaleString()}
                       </td>
@@ -433,7 +439,7 @@ export default function Sent({ compose = true }) {
 
                   {!loadingList && filteredDocs.length === 0 && (
                     <tr>
-                      <td colSpan={4} style={{ color: "var(--color-muted)" }}>
+                      <td colSpan={6} style={{ color: "var(--color-muted)" }}>
                         Nenhum pedido encontrado
                       </td>
                     </tr>

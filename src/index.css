@@ -357,26 +357,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .app.sidebar-collapsed .nav .nav-label { display: none; }
 .app.sidebar-collapsed .nav a,
 .app.sidebar-collapsed .nav button { position: relative; }
-.app.sidebar-collapsed .nav a::after,
-.app.sidebar-collapsed .nav button::after {
-  content: attr(title);
-  position: absolute;
-  left: calc(100% + 8px);
-  top: 50%;
-  transform: translateY(-50%);
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border);
-  padding: 6px 10px;
-  border-radius: 8px;
-  box-shadow: var(--shadow);
-  white-space: nowrap;
-  z-index: 10;
-  opacity: 0;
-  transition: opacity .24s ease;
-}
-.app.sidebar-collapsed .nav a:hover::after,
-.app.sidebar-collapsed .nav button:hover::after { opacity: 1; }
+
 .nav a.active {
   background: linear-gradient(180deg, #0b64f4, #1c77f6);
   border-color: transparent;
@@ -589,17 +570,19 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
   .table th, .table td { padding: 8px 6px; }
 }
 
-/* Distribuição de largura para tabelas comuns (Título, Destino, Data, Status, Ações) */
+/* Distribuição de largura para tabelas comuns (Título, Remetente, Destino, Data, Status, Ações) */
 .table thead tr th:nth-child(1),
-.table tbody tr td:nth-child(1) { width: 38%; }
+.table tbody tr td:nth-child(1) { width: 25%; }
 .table thead tr th:nth-child(2),
-.table tbody tr td:nth-child(2) { width: 18%; }
+.table tbody tr td:nth-child(2) { width: 15%; }
 .table thead tr th:nth-child(3),
-.table tbody tr td:nth-child(3) { width: 22%; }
+.table tbody tr td:nth-child(3) { width: 15%; }
 .table thead tr th:nth-child(4),
-.table tbody tr td:nth-child(4) { width: 14%; }
+.table tbody tr td:nth-child(4) { width: 20%; }
 .table thead tr th:nth-child(5),
-.table tbody tr td:nth-child(5) { width: 8%; }
+.table tbody tr td:nth-child(5) { width: 15%; }
+.table thead tr th:nth-child(6),
+.table tbody tr td:nth-child(6) { width: 10%; }
 
 .actions {
   display: flex;
@@ -1000,6 +983,40 @@ input[type="password"]::-webkit-textfield-decoration-container {
   flex-shrink: 0;
 }
 
+.notification-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  gap: 1rem;
+}
+
+.notification-row:last-child {
+  border-bottom: none;
+}
+
+.notification-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.notif-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--primary);
+  border-radius: 50%;
+  margin-left: 8px;
+}
+
+.notification-sub {
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .btn.small {
   padding: 6px 10px;
   font-size: 12px;
@@ -1063,4 +1080,63 @@ textarea {
 }
 .toast.info { color: var(--primary); }
 .toast.success { color: var(--green); }
-.toast.error { color: var(--red); }
+.status-filter-container {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.filter-chip {
+  padding: 8px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.filter-chip:hover {
+  border-color: var(--primary);
+  background: rgba(11, 100, 244, 0.03);
+}
+
+.filter-chip.active {
+  background: var(--surface);
+  border-color: var(--text);
+  color: var(--text);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.type-filter-group {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.type-btn {
+  padding: 10px 20px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.type-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+  box-shadow: 0 4px 12px rgba(11, 100, 244, 0.2);
+}
+
+.type-btn:hover:not(.active) {
+  background: rgba(11, 100, 244, 0.05);
+  border-color: var(--primary);
+}

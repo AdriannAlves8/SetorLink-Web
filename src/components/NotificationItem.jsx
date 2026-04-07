@@ -2,6 +2,7 @@ import React from "react";
 import { statusClass, statusLabel } from "../utils/constants.js";
 export default function NotificationItem({ title, status, reviewerSector, date, isNew }) {
   const label = statusLabel(status);
+  const reviewer = reviewerSector || "Peças";
   return (
     <div className="notification-row">
       <div className="notification-main">
@@ -10,7 +11,7 @@ export default function NotificationItem({ title, status, reviewerSector, date, 
           {isNew && <span className="notif-dot" aria-hidden="true" />}
         </div>
         <div className="notification-sub">
-          {`${label} por:Peças|| "-"} • ${new Date(date).toLocaleString()}`}
+          {`${label} por: ${reviewer} • ${new Date(date).toLocaleString()}`}
         </div>
       </div>
       <div className={`status ${statusClass(status)}`}>

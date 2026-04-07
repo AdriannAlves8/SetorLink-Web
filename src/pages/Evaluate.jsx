@@ -2,17 +2,18 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as api from "../services/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
-import { statuses, statusClass, normalizeStatus, statusLabel } from "../utils/constants.js";
+import { statuses, statusClass, normalizeStatus, statusLabel, sectors, isPecasSector } from "../utils/constants.js";
 import { showToast } from "../components/Toast.jsx";
 
 export default function Evaluate() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { can } = useAuth();
+  const { user } = useAuth();
   const [doc, setDoc] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [reason, setReason] = useState("");
+  const [selectedSector, setSelectedSector] = useState("");
   const [openError, setOpenError] = useState(null);
   const [preview, setPreview] = useState(false);
   const [loadError, setLoadError] = useState(null);
@@ -39,17 +40,32 @@ export default function Evaluate() {
     }
   };
 
-  const assume = async () => {
-    if (!doc || normalizeStatus(doc.status) !== statuses.PENDENTE) {
-      setError("Este pedido não está pendente.");
+  const forward = async () => {
+    if (!selectedSector) {
+      setError("Selecione um setor para encaminhar.");
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const d = await api.assumeOrder(id);
+      const d = await api.forwardOrder(id, selectedSector);
       setDoc(d);
-      showToast({ type: "success", message: "Pedido assumido" });
+      showToast({ type: "success", message: `Pedido encaminhado para ${selectedSector}` });
+      navigate("/recebidos");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const approve = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const d = await api.approveBySector(id);
+      setDoc(d);
+      showToast({ type: "success", message: "Pedido aprovado e enviado para compra" });
       navigate("/recebidos");
     } catch (err) {
       setError(err.message);
@@ -59,10 +75,6 @@ export default function Evaluate() {
   };
 
   const reject = async () => {
-    if (!doc || normalizeStatus(doc.status) !== statuses.PENDENTE) {
-      setError("Este pedido não está pendente.");
-      return;
-    }
     if (!reason.trim()) {
       setError("Informe o motivo da rejeição.");
       return;
@@ -82,10 +94,6 @@ export default function Evaluate() {
   };
 
   const finalize = async () => {
-    if (!doc || normalizeStatus(doc.status) !== statuses.EM_ATENDIMENTO) {
-      setError("Este pedido não está em atendimento.");
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
@@ -104,7 +112,8 @@ export default function Evaluate() {
   if (!doc) return <div style={{ padding: 24 }}>Carregando...</div>;
 
   const st = normalizeStatus(doc.status);
-  const isPecas = can("evaluate");
+  const isPecas = isPecasSector(user?.sector);
+  const isTarget = doc.targetSector === user?.sector;
 
   return (
     <>
@@ -129,7 +138,7 @@ export default function Evaluate() {
             <iframe
               title="preview"
               src={(() => { try { return api.getFileViewUrl(doc.fileData); } catch { return ""; } })()}
-              style={{ width: "100%", height: 360, border: "1px solid var(--border)", borderRadius: 12 }}
+              style={{ width: "100%", height: 480, border: "1px solid var(--border)", borderRadius: 12 }}
             />
           ) : (
             <div className="empty">Selecione Abrir para nova aba ou Prévia compacta</div>
@@ -203,33 +212,80 @@ export default function Evaluate() {
                 {doc.description || "Nenhuma descrição fornecida."}
               </div>
             </div>
-            {normalizeStatus(doc.status) === statuses.REJEITADO && doc.reason && (
-              <div className="stack">
-                <div style={{ fontWeight: 700 }}>Motivo da rejeição</div>
-                <div>{doc.reason}</div>
+            {st === statuses.REJEITADO && doc.reason && (
+              <div className="stack" style={{ marginTop: 12 }}>
+                <div style={{ fontWeight: 700, color: "var(--red)" }}>Motivo da rejeição</div>
+                <div style={{ padding: 12, background: "rgba(255,0,0,0.05)", borderRadius: 8, border: "1px solid var(--red)" }}>{doc.reason}</div>
               </div>
             )}
+
+            {/* Ações de Peças: Encaminhar ou Rejeitar */}
             {isPecas && st === statuses.PENDENTE && (
-              <>
-                <div className="stack">
-                  <div style={{ fontWeight: 700 }}>Motivo da rejeição (obrigatório para rejeitar)</div>
-                  <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Descreva o motivo" />
+              <div className="stack" style={{ marginTop: 16, gap: 12 }}>
+                <div style={{ fontWeight: 700 }}>Ações do Setor Peças</div>
+                <div className="stack" style={{ gap: 8 }}>
+                  <label style={{ fontSize: "0.85rem", fontWeight: 600 }}>Encaminhar para setor responsável:</label>
+                  <select 
+                    value={selectedSector} 
+                    onChange={(e) => setSelectedSector(e.target.value)}
+                    style={{ padding: "8px", borderRadius: "8px", border: "1px solid var(--border)" }}
+                  >
+                    <option value="">Selecione um setor...</option>
+                    {sectors.filter(s => s !== "Peças").map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                  <button className="btn success" disabled={loading || !selectedSector} onClick={forward}>Encaminhar pedido</button>
                 </div>
+                <div className="stack" style={{ gap: 8, marginTop: 8 }}>
+                  <label style={{ fontSize: "0.85rem", fontWeight: 600 }}>Ou rejeitar pedido (informe o motivo):</label>
+                  <textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Motivo da rejeição" />
+                  <button className="btn danger" disabled={loading} onClick={reject}>Rejeitar pedido</button>
+                </div>
+              </div>
+            )}
+
+            {/* Ações do Setor Responsável: Aprovar ou Rejeitar */}
+            {isTarget && st === statuses.ENCAMINHADO && (
+              <div className="stack" style={{ marginTop: 16, gap: 12 }}>
+                <div style={{ fontWeight: 700 }}>Ações do seu Setor ({user?.sector})</div>
                 <div className="summary-actions">
-                  <button className="btn success" disabled={loading} onClick={assume}>Assumir pedido</button>
+                  <button className="btn success" disabled={loading} onClick={approve}>Aprovar</button>
+                  <button className="btn danger" disabled={loading} onClick={() => {
+                    if (!reason.trim()) {
+                      setError("Informe o motivo da rejeição no campo acima.");
+                      return;
+                    }
+                    reject();
+                  }}>Rejeitar</button>
+                </div>
+                <div className="stack" style={{ gap: 8 }}>
+                  <label style={{ fontSize: "0.85rem", fontWeight: 600 }}>Motivo (obrigatório para rejeitar):</label>
+                  <textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Descreva o motivo caso vá rejeitar" />
+                </div>
+              </div>
+            )}
+
+            {/* Ações de Peças: Finalizar Compra */}
+            {isPecas && (st === statuses.APROVADO_SETOR || st === statuses.EM_ATENDIMENTO) && (
+              <div className="stack" style={{ marginTop: 16, gap: 12 }}>
+                <div style={{ fontWeight: 700 }}>Finalização (Setor Peças)</div>
+                <div className="summary-actions">
+                  <button className="btn primary" style={{ width: "100%" }} disabled={loading} onClick={finalize}>Realizar compra e finalizar</button>
+                </div>
+                <div className="stack" style={{ gap: 8, marginTop: 8 }}>
+                  <label style={{ fontSize: "0.85rem", fontWeight: 600 }}>Ou rejeitar se houver erro:</label>
+                  <textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Motivo da rejeição" />
                   <button className="btn danger" disabled={loading} onClick={reject}>Rejeitar</button>
                 </div>
-              </>
-            )}
-            {isPecas && st === statuses.EM_ATENDIMENTO && (
-              <div className="summary-actions">
-                <button className="btn primary" disabled={loading} onClick={finalize}>Finalizar</button>
               </div>
             )}
-            {(!isPecas || (st !== statuses.PENDENTE && st !== statuses.EM_ATENDIMENTO)) && (
-              <div className="chip">Nenhuma ação disponível para seu perfil neste status.</div>
+
+            {(!isPecas && !isTarget && st !== statuses.REJEITADO && st !== statuses.FINALIZADO) && (
+              <div className="chip" style={{ marginTop: 16 }}>Aguardando processamento pelos setores responsáveis.</div>
             )}
-            {error && <div className="chip" style={{ color: "var(--red)" }}>{error}</div>}
+
+            {error && <div className="chip" style={{ color: "var(--red)", marginTop: 8 }}>{error}</div>}
           </div>
         </div>
       </div>

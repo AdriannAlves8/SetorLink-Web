@@ -8,7 +8,7 @@ import { showToast } from "../components/Toast.jsx";
 export default function DocumentDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { can } = useAuth();
+  const { user, can } = useAuth();
   const [doc, setDoc] = useState(null);
   const [openError, setOpenError] = useState(null);
   const [preview, setPreview] = useState(false);
@@ -21,17 +21,30 @@ export default function DocumentDetail() {
     const load = async () => {
       try {
         const d = await api.getDocumentById(id);
+        
+        // Regra de Visibilidade dinâmica:
+        // 1. Setor Peças sempre vê.
+        // 2. O criador do pedido (uidCriador) sempre vê.
+        // 3. O setor de destino (setorDestino) só vê se o status for ENCAMINHADO.
+        const isPecas = user?.sector === "Peças";
+        const isOwner = d.uidCriador === user?.uid || d.senderSector === user?.sector;
+        const isTarget = d.targetSector === user?.sector;
+
+        if (!isPecas && !isOwner && !isTarget) {
+          throw new Error("Você não tem permissão para visualizar este pedido.");
+        }
+
         setDoc(d);
       } catch (e) {
         setLoadError(e.message || "Erro ao carregar");
       }
     };
-    load();
+    if (user) load();
     const unsubscribe = api.subscribeToDocument(id, () => {
-      load();
+      if (user) load();
     });
     return () => unsubscribe();
-  }, [id]);
+  }, [id, user]);
 
   const openFile = () => {
     try {
@@ -196,30 +209,14 @@ export default function DocumentDetail() {
                 {doc.description || "Nenhuma descrição fornecida."}
               </div>
             </div>
-            {normalizeStatus(doc.status) === statuses.REJEITADO && doc.reason && (
-              <div className="stack">
-                <div style={{ fontWeight: 700 }}>Motivo da rejeição</div>
-                <div>{doc.reason}</div>
+            {st === statuses.REJEITADO && doc.reason && (
+              <div className="stack" style={{ marginTop: 12 }}>
+                <div style={{ fontWeight: 700, color: "var(--red)" }}>Motivo da rejeição</div>
+                <div style={{ padding: 12, background: "rgba(255,0,0,0.05)", borderRadius: 8, border: "1px solid var(--red)" }}>{doc.reason}</div>
               </div>
             )}
-            {isPecas && st === statuses.PENDENTE && (
-              <>
-                <div className="stack">
-                  <div style={{ fontWeight: 700 }}>Motivo da rejeição (obrigatório para rejeitar)</div>
-                  <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Descreva o motivo" />
-                </div>
-                <div className="summary-actions">
-                  <button className="btn success" disabled={loading} onClick={assume}>Assumir pedido</button>
-                  <button className="btn danger" disabled={loading} onClick={reject}>Rejeitar</button>
-                </div>
-              </>
-            )}
-            {isPecas && st === statuses.EM_ATENDIMENTO && (
-              <div className="summary-actions">
-                <button className="btn primary" disabled={loading} onClick={finalize}>Finalizar</button>
-              </div>
-            )}
-            {error && <div className="chip" style={{ color: "var(--red)" }}>{error}</div>}
+            <div className="chip" style={{ marginTop: 16 }}>Este pedido está em status de: <strong>{statusLabel(doc.status)}</strong>.</div>
+            {error && <div className="chip" style={{ color: "var(--red)", marginTop: 8 }}>{error}</div>}
           </div>
         </div>
       </div>

@@ -21,6 +21,9 @@ import DocumentDetail from "../pages/DocumentDetail.jsx";
 import AcceptInvite from "../pages/AcceptInvite.jsx";
 import VerifyEmail from "../pages/VerifyEmail.jsx";
 import Recover from "../pages/Recover.jsx";
+import NewNotaFiscal from "../pages/NewNotaFiscal.jsx";
+import ReceivedNotas from "../pages/ReceivedNotas.jsx";
+import EvaluateNota from "../pages/EvaluateNota.jsx";
 import ToastManager from "../components/Toast.jsx";
 
 function Protected({ children, permission }) {
@@ -84,14 +87,20 @@ function Layout({ children }) {
         <Sidebar
           items={[
             { label: "Dashboard", to: "/", end: true, icon: "home" },
-            ...(can("view_sent")
-              ? [{ label: "Pedidos Enviados", to: "/enviados", icon: "sent" }]
+            ...(can("send")
+              ? [{ label: "Novo pedido", to: "/enviar", icon: "compose" }]
+              : []),
+            ...(user?.sector === "Peças"
+              ? [{ label: "Enviar Nota Fiscal", to: "/enviar-nota", icon: "file-text" }]
               : []),
             ...(can("view_received")
               ? [{ label: "Pedidos para Atender", to: "/recebidos", icon: "received" }]
               : []),
-            ...(can("send")
-              ? [{ label: "Novo pedido", to: "/enviar", icon: "compose" }]
+            ...(can("view_received")
+              ? [{ label: "Notas Fiscais", to: "/receber-notas", icon: "received" }]
+              : []),
+            ...(can("view_sent")
+              ? [{ label: "Pedidos Enviados", to: "/enviados", icon: "sent" }]
               : []),
             ...(can("notifications")
               ? [{ label: "Notificações", to: "/notificacoes", icon: "bell" }]
@@ -188,6 +197,28 @@ export default function AppRouter() {
       />
 
       <Route
+        path="/receber-notas"
+        element={
+          <Protected permission="view_received">
+            <Layout>
+              <ReceivedNotas />
+            </Layout>
+          </Protected>
+        }
+      />
+
+      <Route
+        path="/avaliar-nota/:id"
+        element={
+          <Protected>
+            <Layout>
+              <EvaluateNota />
+            </Layout>
+          </Protected>
+        }
+      />
+
+      <Route
         path="/enviados"
         element={
           <Protected permission="view_sent">
@@ -210,9 +241,20 @@ export default function AppRouter() {
       />
 
       <Route
+        path="/enviar-nota"
+        element={
+          <Protected permission="send">
+            <Layout>
+              <NewNotaFiscal />
+            </Layout>
+          </Protected>
+        }
+      />
+
+      <Route
         path="/avaliar/:id"
         element={
-          <Protected permission="evaluate">
+          <Protected>
             <Layout>
               <Evaluate />
             </Layout>

@@ -99,6 +99,12 @@ export default function Profile() {
             <label>Setor</label>
             <input value={user.sector || ""} readOnly style={{ width: "100%" }} />
           </div>
+          {user.empresa && (
+            <div className="form-row">
+              <label>Empresa</label>
+              <input value={user.empresa} readOnly style={{ width: "100%" }} />
+            </div>
+          )}
           <button className="btn primary" disabled={loading} onClick={save}>Salvar</button>
           {err && <div className="chip" style={{ color: "var(--red)" }}>{err}</div>}
           {msg && <div className="chip" style={{ color: "var(--green)" }}>{msg}</div>}

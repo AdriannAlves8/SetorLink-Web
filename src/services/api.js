@@ -16,6 +16,7 @@ const {
   VITE_APPWRITE_COLLECTION_PROPOSTAS,
   VITE_APPWRITE_COLLECTION_NOTIFICACOES,
   VITE_APPWRITE_COLLECTION_USUARIOS,
+  VITE_APPWRITE_COLLECTION_NOTAS_FISCAIS,
   VITE_APPWRITE_BUCKET_ID,
   VITE_APPWRITE_COLLECTION_CONVITES,
   VITE_CANONICAL_URL,
@@ -183,18 +184,26 @@ async function updateRecoveryCompat(userId, secret, password, confirmPassword) {
 
 async function getOrCreateUserExtras(userId) {
   try {
-    const doc = await databases.getDocument(DB_ID, COL_USUARIOS, userId);
-    return doc;
+    // Primeiro tenta pelo ID do documento (caso sejam iguais)
+    return await databases.getDocument(DB_ID, COL_USUARIOS, userId);
   } catch {
     try {
-      const created = await databases.createDocument(DB_ID, COL_USUARIOS, userId, {
+      // Se falhar, busca na coleção onde o campo 'uid' seja igual ao ID do Auth
+      const list = await databases.listDocuments(DB_ID, COL_USUARIOS, [
+        Query.equal("uid", userId),
+        Query.limit(1)
+      ]);
+      if (list.total > 0) return list.documents[0];
+
+      // Se não encontrar nada, cria um novo (com ID automático ou manual)
+      return await databases.createDocument(DB_ID, COL_USUARIOS, ID.unique(), {
         uid: userId,
         setor: "",
         nome: "",
         isAdmin: false
       });
-      return created;
-    } catch {
+    } catch (err) {
+      console.warn("Erro ao obter/criar extras:", err);
       return null;
     }
   }
@@ -216,6 +225,7 @@ export async function getUser() {
     email: acc.email || extras?.email || "",
     sector: extras?.setor || sectorByEmail || "",
     name: extras?.nome || acc.name || "",
+    empresa: extras?.empresa || "",
     avatar: avatarUrl
   };
 }
@@ -362,6 +372,43 @@ function optValor(v) {
   return n;
 }
 
+export async function createNotification({ titulo, mensagem, destinatarioSetor, propostaId, tipo }) {
+  const now = new Date().toISOString();
+  try {
+    // Busca se já existe uma notificação para ESTA proposta e para ESTE destinatário.
+    // Assim, cada envolvido tem sua própria linha que se atualiza.
+    const existing = await databases.listDocuments(DB_ID, COL_NOTIFICACOES, [
+      Query.equal("propostaId", propostaId),
+      Query.equal("destinatarioSetor", destinatarioSetor),
+      Query.limit(1)
+    ]);
+
+    if (existing.total > 0 || existing.documents.length > 0) {
+      const notifId = existing.documents[0].$id;
+      return await databases.updateDocument(DB_ID, COL_NOTIFICACOES, notifId, {
+        titulo,
+        mensagem: mensagem || existing.documents[0].mensagem,
+        tipo,
+        data: now,
+        lida: false
+      });
+    } else {
+      return await databases.createDocument(DB_ID, COL_NOTIFICACOES, ID.unique(), {
+        titulo,
+        mensagem,
+        destinatarioSetor,
+        propostaId,
+        tipo,
+        data: now,
+        lida: false
+      });
+    }
+  } catch (err) {
+    console.warn("Falha ao gerenciar notificação:", err);
+    return null;
+  }
+}
+
 export async function sendDocument({
   title,
   description,
@@ -405,18 +452,139 @@ export async function sendDocument({
     valor: optValor(valor)
   });
 
-  // Notificação inicial (será atualizada conforme o status mudar)
-  await databases.createDocument(DB_ID, COL_NOTIFICACOES, ID.unique(), {
-    titulo: `Novo pedido de compra — ${senderSector}`,
+  // Notificação inicial: "Pedido criado e enviado para Peças"
+  await createNotification({
+    titulo: "Pedido criado e enviado para Peças",
     mensagem: title,
-    destinatarioSetor: senderSector, // Notifica o próprio criador para ele acompanhar
+    destinatarioSetor: "Peças",
     propostaId: doc.$id,
-    tipo: statuses.PENDENTE,
-    data: now,
-    lida: false
+    tipo: statuses.PENDENTE
   });
 
+  // Também notifica o criador para ele saber que foi enviado
+  if (!isPecasSector(senderSector)) {
+    await createNotification({
+      titulo: "Seu pedido foi enviado para Peças",
+      mensagem: title,
+      destinatarioSetor: senderSector,
+      propostaId: doc.$id,
+      tipo: statuses.PENDENTE
+    });
+  }
+
   return [mapDoc(doc)];
+}
+
+export async function sendNotaFiscal({
+  title,
+  propostaId,
+  targetSector,
+  file,
+  senderSector
+}) {
+  const now = new Date().toISOString();
+  let pdfUri = null;
+
+  if (file && BUCKET_ID) {
+    const fileDoc = await storage.createFile(BUCKET_ID, ID.unique(), file);
+    pdfUri = fileDoc.$id;
+  }
+
+  const acc = await getAccount();
+  const uidCriador = acc?.$id || "";
+
+  // Usamos a mesma coleção de PROPOSTAS, mas diferenciamos pelo título ou um campo de descrição
+  // Como a coleção não tem um campo 'tipo', vamos marcar no título que é uma NOTA FISCAL
+  const doc = await databases.createDocument(DB_ID, COL_PROPOSTAS, ID.unique(), {
+    titulo: `[NOTA FISCAL] ${title}`,
+    descricao: propostaId ? `Referente ao pedido: ${propostaId}` : "Nota Fiscal avulsa",
+    setor: senderSector,
+    authorSetor: senderSector,
+    setorDestino: targetSector,
+    status: statuses.PENDENTE,
+    data: now,
+    pdfUri,
+    uidCriador
+  });
+
+  // Notificação para o setor de destino
+  await createNotification({
+    titulo: `Nova Nota Fiscal: ${title}`,
+    mensagem: `Recebida de ${senderSector}`,
+    destinatarioSetor: targetSector,
+    propostaId: doc.$id,
+    tipo: "NOTA_FISCAL"
+  });
+
+  return doc;
+}
+
+/** Aprovar Nota Fiscal */
+export async function approveNota(id) {
+  const { sector } = await assertActor();
+  const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
+
+  if (!eq(current.setorDestino, sector)) {
+    throw new Error("Ação permitida apenas para o setor responsável");
+  }
+
+  const update = await databases.updateDocument(DB_ID, COL_PROPOSTAS, id, {
+    status: statuses.FINALIZADO
+  });
+
+  await createNotification({
+    titulo: `Nota Fiscal aprovada por ${sector}`,
+    mensagem: current.titulo.replace("[NOTA FISCAL] ", ""),
+    destinatarioSetor: "Peças",
+    propostaId: id,
+    tipo: statuses.FINALIZADO
+  });
+
+  return mapDoc(update);
+}
+
+/** Rejeitar Nota Fiscal */
+export async function rejectNota(id, reason) {
+  const { sector } = await assertActor();
+  const r = String(reason || "").trim();
+  if (!r) throw new Error("Informe o motivo da rejeição");
+
+  const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
+
+  if (!eq(current.setorDestino, sector)) {
+    throw new Error("Ação permitida apenas para o setor responsável");
+  }
+
+  const update = await databases.updateDocument(DB_ID, COL_PROPOSTAS, id, {
+    status: statuses.REJEITADO,
+    motivoRecusa: r
+  });
+
+  await createNotification({
+    titulo: `Nota Fiscal rejeitada por ${sector}`,
+    mensagem: current.titulo.replace("[NOTA FISCAL] ", ""),
+    destinatarioSetor: "Peças",
+    propostaId: id,
+    tipo: statuses.REJEITADO
+  });
+
+  return mapDoc(update);
+}
+
+export async function getNotasFiscais(sector, type = "received") {
+  const queries = [Query.limit(100), Query.startsWith("titulo", "[NOTA FISCAL]")];
+  
+  if (type === "received") {
+    queries.push(Query.equal("setorDestino", sector));
+  } else {
+    queries.push(Query.equal("authorSetor", sector));
+  }
+
+  const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, queries);
+  return {
+    items: res.documents.map(mapDoc),
+    total: res.total
+  };
 }
 
 function normalizeText(s) {
@@ -431,7 +599,10 @@ function eq(a, b) {
   return normalizeText(a) === normalizeText(b);
 }
 
-/** Fila centralizada para Peças: PENDENTE ou EM_ATENDIMENTO (setorDestino não entra na lógica). */
+/** 
+ * Fila centralizada para Peças: 
+ * - Filtra para NÃO mostrar Notas Fiscais, apenas PEDIDOS
+ */
 export async function getPecasQueue({ page = 1, pageSize = 10 } = {}) {
   const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
     Query.limit(2000)
@@ -439,8 +610,11 @@ export async function getPecasQueue({ page = 1, pageSize = 10 } = {}) {
   const filtered = res.documents
     .map(mapDoc)
     .filter((d) => {
+      const isNota = d.title.startsWith("[NOTA FISCAL]");
+      if (isNota) return false;
+
       const st = normalizeStatus(d.status);
-      return st === statuses.PENDENTE || st === statuses.EM_ATENDIMENTO;
+      return st === statuses.PENDENTE || st === statuses.APROVADO_SETOR || st === statuses.EM_ATENDIMENTO;
     })
     .sort((a, b) => new Date(b.date) - new Date(a.date));
   const total = filtered.length;
@@ -448,35 +622,54 @@ export async function getPecasQueue({ page = 1, pageSize = 10 } = {}) {
   return { items: filtered.slice(start, start + pageSize), total };
 }
 
-/** Compat: parâmetro `sector` ignorado; fila é sempre a de Peças. */
-export async function getReceived(_sector, opts = {}) {
-  return getPecasQueue(opts);
+/** 
+ * Fila para o Setor Responsável:
+ * - Filtra para NÃO mostrar Notas Fiscais, apenas PEDIDOS
+ */
+export async function getReceived(sector, { page = 1, pageSize = 10 } = {}) {
+  if (isPecasSector(sector)) return getPecasQueue({ page, pageSize });
+
+  const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
+    Query.equal("setorDestino", sector),
+    Query.limit(2000)
+  ]);
+
+  const filtered = res.documents
+    .map(mapDoc)
+    .filter((d) => {
+      const isNota = d.title.startsWith("[NOTA FISCAL]");
+      if (isNota) return false;
+
+      return true;
+    })
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const total = filtered.length;
+  const start = Math.max(0, (page - 1) * pageSize);
+  return { items: filtered.slice(start, start + pageSize), total };
 }
 
-/** Pedidos enviados: apenas propostas do usuário logado (uidCriador). */
+/**
+ * Filtra para NÃO mostrar Notas Fiscais nos pedidos enviados
+ */
 export async function getSent(userId, userSector, { page = 1, pageSize = 10 } = {}) {
-  if (!userId) return { items: [], total: 0 };
-  let res;
-  try {
-    res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
-      Query.equal("uidCriador", userId),
-      Query.limit(2000)
-    ]);
-  } catch {
-    res = { documents: [] };
-  }
-  let all = res.documents.map(mapDoc);
-  if (all.length === 0) {
-    const fb = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [Query.limit(2000)]);
-    all = fb.documents.map(mapDoc).filter((d) => {
+  const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
+    Query.limit(2000)
+  ]);
+  const filtered = res.documents
+    .map(mapDoc)
+    .filter((d) => {
+      const isNota = d.title.startsWith("[NOTA FISCAL]");
+      if (isNota) return false;
+
       if (d.uidCriador) return d.uidCriador === userId;
       return eq(d.senderSector, userSector);
-    });
-  }
-  all.sort((a, b) => new Date(b.date) - new Date(a.date));
-  const total = all.length;
+    })
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const total = filtered.length;
   const start = Math.max(0, (page - 1) * pageSize);
-  return { items: all.slice(start, start + pageSize), total };
+  return { items: filtered.slice(start, start + pageSize), total };
 }
 
 export function subscribeToProposals(handler) {
@@ -492,68 +685,174 @@ export function subscribeToDocument(id, handler) {
   return subscribe(channel, handler);
 }
 
-async function assertPecasActor() {
+async function assertActor() {
   const acc = await getAccount();
   if (!acc) throw new Error("Sessão inválida");
   const extras = await getOrCreateUserExtras(acc.$id);
   const sec = extras?.setor || sectorFromEmail(acc.email) || "";
-  if (!isPecasSector(sec)) throw new Error("Apenas o setor Peças pode executar esta ação");
   return { acc, extras, sector: sec };
 }
 
-async function notifyCreatorSector(currentDoc, newStatus) {
-  // 1. Disparo apenas para status específicos
-  const validStatus = [statuses.EM_ATENDIMENTO, statuses.FINALIZADO, statuses.REJEITADO];
-  if (!validStatus.includes(newStatus)) return null;
+/** Peças encaminha para outro setor */
+export async function forwardOrder(id, targetSector) {
+  const { sector } = await assertActor();
+  if (!isPecasSector(sector)) throw new Error("Ação permitida apenas para o setor Peças");
 
-  // 2. Padrão da mensagem fixa (usando "pelo setor Peças" para o regex do front-end funcionar)
-  const messages = {
-    [statuses.EM_ATENDIMENTO]: "Documento atendido pelo setor Peças",
-    [statuses.FINALIZADO]: "Documento finalizado pelo setor Peças",
-    [statuses.REJEITADO]: "Documento rejeitado pelo setor Peças"
-  };
-
-  const titulo = messages[newStatus];
-
-  // 3. Atualizar notificação existente em vez de criar uma nova
-  try {
-    const existing = await databases.listDocuments(DB_ID, COL_NOTIFICACOES, [
-      Query.equal("propostaId", currentDoc.$id),
-      Query.limit(1)
-    ]);
-    
-    if (existing.total > 0 || existing.documents.length > 0) {
-      const notifId = existing.documents[0].$id;
-      return await databases.updateDocument(DB_ID, COL_NOTIFICACOES, notifId, {
-        titulo,
-        tipo: newStatus,
-        data: new Date().toISOString(),
-        lida: false // Reseta para "não lida" para o usuário ver o novo status
-      });
-    } else {
-      // Se por algum motivo não existir a notificação inicial, cria uma nova
-      const dest = currentDoc.authorSetor || currentDoc.setor || "";
-      if (isPecasSector(dest)) return null;
-
-      return await databases.createDocument(DB_ID, COL_NOTIFICACOES, ID.unique(), {
-        titulo,
-        mensagem: currentDoc.titulo,
-        destinatarioSetor: dest,
-        propostaId: currentDoc.$id,
-        tipo: newStatus,
-        data: new Date().toISOString(),
-        lida: false
-      });
-    }
-  } catch (err) {
-    console.warn("Falha ao atualizar notificação:", err);
-    return null;
+  const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
+  if (normalizeStatus(current.status) !== statuses.PENDENTE) {
+    throw new Error("Apenas pedidos pendentes podem ser encaminhados");
   }
+
+  const update = await databases.updateDocument(DB_ID, COL_PROPOSTAS, id, {
+    status: statuses.ENCAMINHADO,
+    setorDestino: targetSector
+  });
+
+  // Notificações
+  await createNotification({
+    titulo: `Pedido encaminhado para ${targetSector}`,
+    mensagem: current.titulo,
+    destinatarioSetor: targetSector,
+    propostaId: id,
+    tipo: statuses.ENCAMINHADO
+  });
+
+  await createNotification({
+    titulo: `Seu pedido foi encaminhado para ${targetSector}`,
+    mensagem: current.titulo,
+    destinatarioSetor: current.authorSetor || current.setor,
+    propostaId: id,
+    tipo: statuses.ENCAMINHADO
+  });
+
+  return mapDoc(update);
 }
 
-/** PENDENTE → EM_ATENDIMENTO (somente Peças). */
+/** Setor responsável aprova o pedido */
+export async function approveBySector(id) {
+  const { sector } = await assertActor();
+  const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
+
+  if (normalizeStatus(current.status) !== statuses.ENCAMINHADO) {
+    throw new Error("Apenas pedidos encaminhados podem ser aprovados");
+  }
+
+  if (!eq(current.setorDestino, sector)) {
+    throw new Error("Ação permitida apenas para o setor responsável");
+  }
+
+  const update = await databases.updateDocument(DB_ID, COL_PROPOSTAS, id, {
+    status: statuses.APROVADO_SETOR,
+    setorDestino: "Peças"
+  });
+
+  // Notificações
+  await createNotification({
+    titulo: `Pedido aprovado por ${sector}`,
+    mensagem: current.titulo,
+    destinatarioSetor: "Peças",
+    propostaId: id,
+    tipo: statuses.APROVADO_SETOR
+  });
+
+  await createNotification({
+    titulo: `Seu pedido foi aprovado por ${sector}`,
+    mensagem: current.titulo,
+    destinatarioSetor: current.authorSetor || current.setor,
+    propostaId: id,
+    tipo: statuses.APROVADO_SETOR
+  });
+
+  return mapDoc(update);
+}
+
+/** Peças ou Setor responsável rejeitam o pedido */
+export async function rejectOrder(id, reason) {
+  const { sector } = await assertActor();
+  const r = String(reason || "").trim();
+  if (!r) throw new Error("Informe o motivo da rejeição");
+
+  const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
+  const st = normalizeStatus(current.status);
+
+  if (st !== statuses.PENDENTE && st !== statuses.ENCAMINHADO && st !== statuses.APROVADO_SETOR) {
+    throw new Error("Este pedido não pode ser rejeitado neste status");
+  }
+
+  // Verifica se quem está rejeitando tem permissão
+  const isPecas = isPecasSector(sector);
+  const isTarget = eq(current.setorDestino, sector);
+
+  if (!isPecas && !isTarget) {
+    throw new Error("Você não tem permissão para rejeitar este pedido");
+  }
+
+  const update = await databases.updateDocument(DB_ID, COL_PROPOSTAS, id, {
+    status: statuses.REJEITADO,
+    motivoRecusa: r
+  });
+
+  // Notificações
+  await createNotification({
+    titulo: `Pedido rejeitado por ${sector}`,
+    mensagem: current.titulo,
+    destinatarioSetor: current.authorSetor || current.setor,
+    propostaId: id,
+    tipo: statuses.REJEITADO
+  });
+
+  // Se foi o setor quem rejeitou, avisa Peças também
+  if (!isPecas) {
+    await createNotification({
+      titulo: `Pedido rejeitado por ${sector}`,
+      mensagem: current.titulo,
+      destinatarioSetor: "Peças",
+      propostaId: id,
+      tipo: statuses.REJEITADO
+    });
+  }
+
+  return mapDoc(update);
+}
+
+/** Peças finaliza a compra */
+export async function finalizeOrder(id) {
+  const { acc, sector } = await assertActor();
+  if (!isPecasSector(sector)) throw new Error("Ação permitida apenas para o setor Peças");
+
+  const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
+  const st = normalizeStatus(current.status);
+
+  // Pode finalizar se estiver APROVADO_SETOR ou EM_ATENDIMENTO (legado) ou até PENDENTE (se Peças quiser pular o setor)
+  if (st !== statuses.APROVADO_SETOR && st !== statuses.EM_ATENDIMENTO && st !== statuses.PENDENTE) {
+    throw new Error("Apenas pedidos aprovados ou em análise podem ser finalizados");
+  }
+
+  const now = new Date().toISOString();
+  const update = await databases.updateDocument(DB_ID, COL_PROPOSTAS, id, {
+    status: statuses.FINALIZADO,
+    dataFinalizado: now,
+    assumidoPor: acc.$id,
+    dataAssumido: current.dataAssumido || now
+  });
+
+  // Notificações
+  await createNotification({
+    titulo: `Pedido finalizado por Peças`,
+    mensagem: current.titulo,
+    destinatarioSetor: current.authorSetor || current.setor,
+    propostaId: id,
+    tipo: statuses.FINALIZADO
+  });
+
+  return mapDoc(update);
+}
+
+/** PENDENTE → EM_ATENDIMENTO (Legado/Opcional). */
 export async function assumeOrder(id) {
-  const { acc } = await assertPecasActor();
+  const { acc, sector } = await assertActor();
+  if (!isPecasSector(sector)) throw new Error("Ação permitida apenas para o setor Peças");
+
   const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
   if (normalizeStatus(current.status) !== statuses.PENDENTE) {
     throw new Error("Somente pedidos pendentes podem ser assumidos");
@@ -565,40 +864,15 @@ export async function assumeOrder(id) {
     dataAssumido: now
   };
   const update = await databases.updateDocument(DB_ID, COL_PROPOSTAS, id, patch);
-  await notifyCreatorSector(current, statuses.EM_ATENDIMENTO);
-  return mapDoc(update);
-}
-
-/** PENDENTE → REJEITADO (somente Peças, motivo obrigatório). */
-export async function rejectOrder(id, reason) {
-  await assertPecasActor();
-  const r = String(reason || "").trim();
-  if (!r) throw new Error("Informe o motivo da rejeição");
-  const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
-  if (normalizeStatus(current.status) !== statuses.PENDENTE) {
-    throw new Error("Somente pedidos pendentes podem ser rejeitados");
-  }
-  const update = await databases.updateDocument(DB_ID, COL_PROPOSTAS, id, {
-    status: statuses.REJEITADO,
-    motivoRecusa: r
+  
+  await createNotification({
+    titulo: "Pedido em atendimento por Peças",
+    mensagem: current.titulo,
+    destinatarioSetor: current.authorSetor || current.setor,
+    propostaId: id,
+    tipo: statuses.EM_ATENDIMENTO
   });
-  await notifyCreatorSector(current, statuses.REJEITADO);
-  return mapDoc(update);
-}
 
-/** EM_ATENDIMENTO → FINALIZADO (somente Peças). */
-export async function finalizeOrder(id) {
-  await assertPecasActor();
-  const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
-  if (normalizeStatus(current.status) !== statuses.EM_ATENDIMENTO) {
-    throw new Error("Somente pedidos em atendimento podem ser finalizados");
-  }
-  const now = new Date().toISOString();
-  const update = await databases.updateDocument(DB_ID, COL_PROPOSTAS, id, {
-    status: statuses.FINALIZADO,
-    dataFinalizado: now
-  });
-  await notifyCreatorSector(current, statuses.FINALIZADO);
   return mapDoc(update);
 }
 
@@ -639,7 +913,9 @@ export async function getDocumentById(id) {
   const isCreator = mapped.uidCriador
     ? mapped.uidCriador === acc.$id
     : eq(mapped.senderSector, userSector);
-  if (!isPecas && !isCreator) {
+  const isTarget = eq(mapped.targetSector, userSector);
+
+  if (!isPecas && !isCreator && !isTarget) {
     throw new Error("Acesso negado");
   }
   return mapped;
@@ -669,7 +945,8 @@ export async function getNotifications(sector) {
         const cur = normalizeStatus(d.status);
         const parseReviewer = (t) => {
           const s = String(t || "");
-          const m = s.match(/pelo setor\s+(.+)$/i);
+          // Tenta pegar quem executou a ação (depois de "por" ou "para")
+          const m = s.match(/(?:por|para)\s+(.+)$/i);
           return m ? m[1].trim() : null;
         };
         return {
@@ -784,28 +1061,36 @@ export async function getStats(ctx, { scope = "mine" } = {}) {
   const userId = ctx?.userId;
   const sector = ctx?.sector || "";
   try {
-    const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [Query.limit(5000)]);
-    let docs = res.documents.map(mapDoc);
-    if (scope === "all" && isPecasSector(sector)) {
-      // todos os pedidos
-    } else {
-      docs = docs.filter((d) =>
-        d.uidCriador === userId || (!d.uidCriador && eq(d.senderSector, sector))
-      );
-    }
+    const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
+      Query.limit(5000)
+    ]);
+    const docs = res.documents.map(mapDoc);
     let pending = 0;
     let emAtendimento = 0;
     let finalizado = 0;
     let rejeitado = 0;
     for (const d of docs) {
       const n = normalizeStatus(d.status);
+      const isOwner = d.uidCriador === userId || eq(d.senderSector, sector);
+      const isPecas = isPecasSector(sector);
+      const isTarget = eq(d.targetSector, sector);
+
+      // Regra de Visibilidade para as Estatísticas:
+      // O documento só conta se:
+      // 1. O usuário for Peças (se scope for 'all').
+      // 2. O usuário for o Criador.
+      // 3. O usuário for o Destino.
+      const canSeeAll = scope === "all" && isPecas;
+      if (!canSeeAll && !isOwner && !isTarget) continue;
+
       if (n === statuses.PENDENTE) pending++;
-      else if (n === statuses.EM_ATENDIMENTO) emAtendimento++;
+      else if (n === statuses.ENCAMINHADO || n === statuses.APROVADO_SETOR || n === statuses.EM_ATENDIMENTO) emAtendimento++;
       else if (n === statuses.FINALIZADO) finalizado++;
       else if (n === statuses.REJEITADO) rejeitado++;
     }
     return { pending, emAtendimento, finalizado, rejeitado };
-  } catch {
+  } catch (err) {
+    console.error("Erro ao obter estatísticas:", err);
     return { pending: 0, emAtendimento: 0, finalizado: 0, rejeitado: 0 };
   }
 }

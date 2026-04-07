@@ -13,8 +13,10 @@ export default function NotificationCard({ title, documentTitle, date, status, o
         </div>
       </div>
       <div className="notification-actions">
-        <span className={`status ${cls}`}>{statusLabel(status)}</span>
-        <button className="btn danger small" onClick={onDelete}>Excluir</button>
+        <div className="stack" style={{ alignItems: "flex-end", gap: 8 }}>
+          <span className={`status ${cls}`}>{statusLabel(status)}</span>
+          <button className="btn danger small" onClick={onDelete}>Excluir</button>
+        </div>
       </div>
     </div>
   );

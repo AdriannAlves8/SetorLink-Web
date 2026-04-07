@@ -1,6 +1,6 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { HomeIcon, SentIcon, ReceivedIcon, ComposeIcon, BellIcon, UserIcon, KeyIcon, LogoutIcon, UserPlusIcon } from "./Icons.jsx";
+import { HomeIcon, SentIcon, ReceivedIcon, ComposeIcon, BellIcon, UserIcon, KeyIcon, LogoutIcon, UserPlusIcon, FileTextIcon } from "./Icons.jsx";
 import Logo from "./Logo.jsx";
 
 export default function Sidebar({ items, onLogout }) {
@@ -15,6 +15,7 @@ export default function Sidebar({ items, onLogout }) {
       case "user": return <UserIcon />;
       case "key": return <KeyIcon />;
       case "logout": return <LogoutIcon />;
+      case "file-text": return <FileTextIcon />;
       default: return <HomeIcon />;
     }
   };
@@ -29,18 +30,18 @@ export default function Sidebar({ items, onLogout }) {
       <nav className="nav">
         {items.map((item) =>
           item.to ? (
-            <NavLink key={item.label} to={item.to} end={item.end} title={item.label} aria-label={item.label}>
+            <NavLink key={item.label} to={item.to} end={item.end} aria-label={item.label}>
               <span className="nav-ico-svg">{iconFor(item.icon)}</span>
               <span className="nav-label">{item.label}</span>
             </NavLink>
           ) : (
-            <button key={item.label} className="btn" style={{ justifyContent: "flex-start" }} title={item.label} aria-label={item.label}>
+            <button key={item.label} className="btn" style={{ justifyContent: "flex-start" }} aria-label={item.label}>
               <span className="nav-ico-svg">{iconFor(item.icon)}</span>
               <span className="nav-label">{item.label}</span>
             </button>
           )
         )}
-        <button className="btn logout" onClick={onLogout} title="Sair" aria-label="Sair">
+        <button className="btn logout" onClick={onLogout} aria-label="Sair">
           <span className="nav-ico-svg"><LogoutIcon /></span>
           <span className="nav-label">Sair</span>
         </button>

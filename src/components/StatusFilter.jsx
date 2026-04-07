@@ -2,30 +2,25 @@ import React from "react";
 import { statuses, statusLabel } from "../utils/constants.js";
 
 const OPTIONS = [
-  "Todos",
-  statuses.PENDENTE,
-  statuses.EM_ATENDIMENTO,
-  statuses.FINALIZADO,
-  statuses.REJEITADO
+  { label: "Todos", value: "Todos" },
+  { label: "Em análise", value: "ANALISE" },
+  { label: "Aguardando compra", value: statuses.APROVADO_SETOR },
+  { label: "Finalizado", value: statuses.FINALIZADO },
+  { label: "Rejeitado", value: statuses.REJEITADO }
 ];
 
 export default function StatusFilter({ value, onChange }) {
   return (
-    <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+    <div className="status-filter-container">
       {OPTIONS.map(opt => {
-        const active = value === opt;
-        const label = opt === "Todos" ? "Todos" : statusLabel(opt);
+        const active = value === opt.value;
         return (
           <button
-            key={opt}
-            className="btn"
-            style={{
-              background: active ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.04)",
-              borderColor: active ? "var(--color-border)" : "transparent"
-            }}
-            onClick={() => onChange(opt)}
+            key={opt.value}
+            className={`filter-chip ${active ? "active" : ""}`}
+            onClick={() => onChange(opt.value)}
           >
-            {label}
+            {opt.label}
           </button>
         );
       })}
