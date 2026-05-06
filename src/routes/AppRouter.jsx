@@ -65,7 +65,9 @@ function Layout({ children }) {
       const pendingOrders = receivedRes.items.filter(d => {
         const st = normalizeStatus(d.status);
         const isTarget = d.targetSector === user.sector;
-        return (isPecas && st === statuses.PENDENTE) || (isTarget && st === statuses.ENCAMINHADO);
+        const canPecasEvaluate = isPecas && (st === statuses.PENDENTE || st === statuses.APROVADO || st === statuses.RECUSADO);
+        const canSectorEvaluate = isTarget && st === statuses.ENCAMINHADO;
+        return canPecasEvaluate || canSectorEvaluate;
       }).length;
 
       const pendingNotas = notasRes.items.filter(n => normalizeStatus(n.status) === statuses.PENDENTE).length;

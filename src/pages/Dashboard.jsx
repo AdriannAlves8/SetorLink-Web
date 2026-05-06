@@ -35,7 +35,11 @@ export default function Dashboard() {
       const pendingOrdersCount = receivedRes.items.filter(d => {
         const st = normalizeStatus(d.status);
         const isTarget = d.targetSector === user.sector;
-        return (isPecas && st === statuses.PENDENTE) || (isTarget && st === statuses.ENCAMINHADO);
+        // Peças atende o que está pendente, aprovado ou recusado pelo setor de destino
+        const canPecasEvaluate = isPecas && (st === statuses.PENDENTE || st === statuses.APROVADO || st === statuses.RECUSADO);
+        // Outros setores atendem o que foi encaminhado para eles
+        const canSectorEvaluate = isTarget && st === statuses.ENCAMINHADO;
+        return canPecasEvaluate || canSectorEvaluate;
       }).length;
 
       const pendingNotasCount = notasRes.items.filter(n => normalizeStatus(n.status) === statuses.PENDENTE).length;
@@ -191,9 +195,16 @@ export default function Dashboard() {
                         const st = normalizeStatus(d.status);
                         const isPecas = user.sector === "Peças";
                         const isTarget = d.targetSector === user.sector;
+                        const isNota = d.title.startsWith("[NOTA FISCAL]");
                         
-                        // Pode atender se for Peças e estiver pendente OU se for o setor de destino e estiver encaminhado
-                        const canEvaluate = (isPecas && st === statuses.PENDENTE) || (isTarget && st === statuses.ENCAMINHADO);
+                        // Lógica de avaliação:
+                        // 1. Se for Nota Fiscal: só quem é o destino pode avaliar
+                        // 2. Se for Pedido: 
+                        //    - Peças avalia se PENDENTE, APROVADO ou RECUSADO
+                        //    - Outro setor avalia se ENCAMINHADO e for o destino
+                        const canEvaluate = isNota 
+                          ? (isTarget && st === statuses.PENDENTE)
+                          : ((isPecas && (st === statuses.PENDENTE || st === statuses.APROVADO || st === statuses.RECUSADO)) || (isTarget && st === statuses.ENCAMINHADO));
 
                         return (
                           <tr key={d.id}>

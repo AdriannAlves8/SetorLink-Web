@@ -334,10 +334,13 @@ export default function Evaluate() {
                   <>
                     <div className="helper" style={{ color: "var(--muted)", marginBottom: 8 }}>
                       O setor responsável <strong>recusou</strong> este pedido. 
-                      Você deve finalizar o processo para que o autor seja notificado oficialmente.
+                      Você pode iniciar o processo de compra ou confirmar a recusa e finalizar o pedido.
                     </div>
-                    <div className="summary-actions">
-                      <button className="btn primary" style={{ width: "100%", padding: "14px" }} disabled={loading} onClick={finalize}>
+                    <div className="summary-actions" style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                      <button className="btn success" style={{ padding: "14px 20px" }} disabled={loading} onClick={assume}>
+                        Iniciar Compra
+                      </button>
+                      <button className="btn primary" style={{ padding: "14px 20px" }} disabled={loading} onClick={finalize}>
                         Confirmar Recusa e Finalizar
                       </button>
                     </div>

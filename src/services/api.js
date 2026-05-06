@@ -527,7 +527,7 @@ export async function approveNota(id) {
   const { sector } = await assertActor();
   const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
 
-  if (!isPecasSector(sector) && !eq(current.setorDestino, sector)) {
+  if (!eq(current.setorDestino, sector)) {
     throw new Error("Ação permitida apenas para o setor responsável");
   }
 
@@ -795,10 +795,17 @@ export async function rejectOrder(id, reason) {
     throw new Error("Você não tem permissão para rejeitar este pedido");
   }
 
-  const update = await databases.updateDocument(DB_ID, COL_PROPOSTAS, id, {
+  const patch = {
     status: statuses.RECUSADO,
     motivoRecusa: r
-  });
+  };
+
+  // Se for o setor quem rejeitou, o pedido volta para Peças
+  if (!isPecas) {
+    patch.setorDestino = "Peças";
+  }
+
+  const update = await databases.updateDocument(DB_ID, COL_PROPOSTAS, id, patch);
 
   // Notificações
   await createNotification({
@@ -864,8 +871,8 @@ export async function assumeOrder(id) {
   const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
   const st = normalizeStatus(current.status);
   
-  if (st !== statuses.PENDENTE && st !== statuses.APROVADO) {
-    throw new Error("Somente pedidos pendentes ou aprovados pelo setor podem ser assumidos");
+  if (st !== statuses.PENDENTE && st !== statuses.APROVADO && st !== statuses.RECUSADO) {
+    throw new Error("Somente pedidos pendentes, aprovados ou recusados pelo setor podem ser assumidos");
   }
 
   const now = new Date().toISOString();
