@@ -4,9 +4,9 @@ import { statuses, statusLabel } from "../utils/constants.js";
 const OPTIONS = [
   { label: "Todos", value: "Todos" },
   { label: "Em análise", value: "ANALISE" },
-  { label: "Aguardando compra", value: statuses.APROVADO_SETOR },
+  { label: "Aprovado (Compra)", value: statuses.APROVADO },
   { label: "Finalizado", value: statuses.FINALIZADO },
-  { label: "Rejeitado", value: statuses.REJEITADO }
+  { label: "Rejeitado", value: statuses.RECUSADO }
 ];
 
 export default function StatusFilter({ value, onChange }) {

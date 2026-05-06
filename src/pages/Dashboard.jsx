@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 import * as api from "../services/api.js";
-import { statuses, normalizeStatus } from "../utils/constants.js";
+import { statuses, normalizeStatus, statusLabel, statusClass } from "../utils/constants.js";
 import { NavLink } from "react-router-dom";
 import Header from "../components/Header.jsx";
 import SummaryCard from "../components/SummaryCard.jsx";
@@ -23,151 +23,236 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchData = async () => {
       if (!user || !user.sector) return;
-      const scope = can("view_received") ? "all" : "mine";
-      const st = await api.getStats({ userId: user.uid, sector: user.sector }, { scope });
-      setStats(st);
+      
+      const [statsRes, receivedRes, notasRes, notifsRes] = await Promise.all([
+        api.getStats({ userId: user.uid, sector: user.sector }, { scope: can("view_received") ? "all" : "mine" }),
+        can("view_received") ? api.getReceived(user.sector, { page: 1, pageSize: 8, allStatuses: true }) : Promise.resolve({ items: [] }),
+        can("view_received") ? api.getNotasFiscais(user.sector, "received") : Promise.resolve({ items: [] }),
+        api.getNotifications(user.sector)
+      ]);
+
+      const isPecas = user.sector === "Peças";
+      const pendingOrdersCount = receivedRes.items.filter(d => {
+        const st = normalizeStatus(d.status);
+        const isTarget = d.targetSector === user.sector;
+        return (isPecas && st === statuses.PENDENTE) || (isTarget && st === statuses.ENCAMINHADO);
+      }).length;
+
+      const pendingNotasCount = notasRes.items.filter(n => normalizeStatus(n.status) === statuses.PENDENTE).length;
+
+      setStats({
+        ...statsRes,
+        pendingOrders: pendingOrdersCount,
+        pendingNotas: pendingNotasCount
+      });
 
       if (can("view_received")) {
-        const r = await api.getReceived(user.sector, { page: 1, pageSize: 50 });
-        setReceived(r.items);
-      } else {
-        setReceived([]);
+        setReceived(receivedRes.items);
       }
 
-      const n = await api.getNotifications(user.sector);
-      setNotifications(n);
+      setNotifications(notifsRes);
 
       if (can("view_sent")) {
-        const s = await api.getSent(user.uid, user.sector, { page: 1, pageSize: 50 });
-        setSent(s.items);
-      } else {
-        setSent([]);
+        const res = user.sector === "Peças" 
+          ? await api.getNotasFiscais(user.sector, "sent")
+          : await api.getSent(user.uid, user.sector, { page: 1, pageSize: 50 });
+        setSent(res.items);
       }
     };
 
     fetchData();
-
-    const unsubscribe = api.subscribe(
-      [api.CHANNELS.PROPOSTAS, api.CHANNELS.NOTIFICACOES],
-      () => {
-        fetchData();
-      }
-    );
-
-    const onVisibilityChange = async () => {
-      if (document.visibilityState !== "visible") return;
-      fetchData();
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
-    return () => {
-      unsubscribe();
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
+    const unsubscribe = api.subscribe([api.CHANNELS.PROPOSTAS, api.CHANNELS.NOTIFICACOES], fetchData);
+    return () => unsubscribe();
   }, [user?.sector, user?.uid]);
 
-  const pendingCount = stats.pending;
-  const emAtendimentoCount = stats.emAtendimento;
-  const finalizadoCount = stats.finalizado;
-  const rejeitadoCount = stats.rejeitado;
+  const firstName = user?.name?.split(" ")[0] || user?.sector;
 
   return (
     <>
       <Header title="Dashboard" user={user} />
+      
+      {/* Hero Section */}
       <div className="dashboard-hero">
         <div className="hero-content">
-          <div className="hero-title">Olá, {user.name || user.sector}</div>
-          <div className="hero-subtitle">Visão geral dos pedidos de compra</div>
-          <div className="hero-actions">
-            {can("send") && <NavLink className="btn primary" to="/enviar">Novo pedido</NavLink>}
-            {can("view_received") && <NavLink className="btn" to="/recebidos">Pedidos para atender</NavLink>}
-            {can("view_sent") && <NavLink className="btn" to="/enviados">Meus pedidos</NavLink>}
+          <div className="hero-title">
+            Olá, {firstName}! 👋
+          </div>
+          <div className="hero-subtitle">
+            Aqui está o resumo geral dos pedidos e notas fiscais.
+          </div>
+          
+          <div className="hero-quick-actions">
+            <NavLink to="/recebidos" className="quick-action-item">
+              <div className="quick-action-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+              </div>
+              Pedidos para atender
+              {stats.pendingOrders > 0 && <span className="nav-badge-dot" style={{ position: 'static', marginLeft: 8 }} />}
+            </NavLink>
+            <NavLink to="/receber-notas" className="quick-action-item">
+              <div className="quick-action-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"></path><path d="M18 14h-8"></path><path d="M15 18h-5"></path><path d="M10 6h8v4h-8V6Z"></path></svg>
+              </div>
+              Notas Recebidas
+              {stats.pendingNotas > 0 && <span className="nav-badge-dot" style={{ position: 'static', marginLeft: 8 }} />}
+            </NavLink>
+          </div>
+        </div>
+
+        {can("send") && (
+          <NavLink to={user?.sector === "Peças" ? "/enviar-nota" : "/enviar"} className="hero-primary-card">
+            <div className="icon-box">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+            </div>
+            <div className="text-box">
+              <span className="title">{user?.sector === "Peças" ? "Emitir Nota Fiscal" : "Criar novo pedido"}</span>
+              <span className="subtitle">{user?.sector === "Peças" ? "Envie uma nova nota fiscal" : "Abra um novo pedido para o setor"}</span>
+            </div>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </NavLink>
+        )}
+      </div>
+
+      {/* Resumo do dia (Agora no topo) */}
+      <div className="daily-summary-footer" style={{ marginTop: 0, marginBottom: '2rem' }}>
+        <div className="daily-summary-header">
+          <div className="card-title">Resumo do dia</div>
+          <div className="chip">{new Date().toLocaleDateString()}</div>
+        </div>
+        <div className="daily-summary-grid">
+          <div className="summary-item-small">
+            <div className="icon" style={{ background: '#FFF7ED', color: '#EA580C' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            </div>
+            <div className="stack">
+              <span style={{ fontWeight: 700, fontSize: '1.25rem' }}>{stats.pending}</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Pedido pendente</span>
+            </div>
+          </div>
+          <div className="summary-item-small">
+            <div className="icon" style={{ background: '#EFF6FF', color: '#2563EB' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            </div>
+            <div className="stack">
+              <span style={{ fontWeight: 700, fontSize: '1.25rem' }}>{stats.emAtendimento}</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Em atendimento</span>
+            </div>
+          </div>
+          <div className="summary-item-small">
+            <div className="icon" style={{ background: '#F0FDF4', color: '#16A34A' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+            <div className="stack">
+              <span style={{ fontWeight: 700, fontSize: '1.25rem' }}>{stats.finalizado}</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Finalizados</span>
+            </div>
+          </div>
+          <div className="summary-item-small">
+            <div className="icon" style={{ background: '#FEF2F2', color: '#DC2626' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+            </div>
+            <div className="stack">
+              <span style={{ fontWeight: 700, fontSize: '1.25rem' }}>{stats.rejeitado}</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Rejeitados</span>
+            </div>
           </div>
         </div>
       </div>
-      <div className="grid">
-        <SummaryCard color="orange" title="Pendentes" value={pendingCount} buttonText={can("view_received") ? "Ver fila" : undefined} buttonTo="/recebidos" />
-        <SummaryCard color="blue" title="Em atendimento" value={emAtendimentoCount} buttonText={can("view_received") ? "Ver fila" : undefined} buttonTo="/recebidos" />
-        <SummaryCard color="green" title="Finalizados" value={finalizadoCount} />
-        <SummaryCard color="red" title="Rejeitados" value={rejeitadoCount} />
-        {can("view_received") && (
-          <div className="card col-12">
+
+      <div className="dashboard-main-grid" style={{ gridTemplateColumns: "1fr", gap: "2rem" }}>
+        {/* Main Section */}
+        <div className="dashboard-section" style={{ gap: "2rem" }}>
+          {/* Recent Activities */}
+          <div className="card">
             <div className="card-header">
-              <div className="card-title">Fila — pedidos recentes</div>
-              <NavLink className="btn small" to="/recebidos">Ver todos</NavLink>
+              <div className="card-title">Recentes</div>
+              <NavLink className="btn small" to="/enviados">Ver histórico</NavLink>
             </div>
-            <div className="doc-grid">
-              {[...received].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,6).map(d => {
-                const st = normalizeStatus(d.status);
-                const isPecas = user.sector === "Peças";
-                const isTarget = d.targetSector === user.sector;
-                const canAtender = (isPecas && (st === statuses.PENDENTE || st === statuses.APROVADO_SETOR || st === statuses.EM_ATENDIMENTO))
-                                 || (isTarget && st === statuses.ENCAMINHADO);
-                const label = canAtender ? "Atender" : "Detalhes";
-                const to = canAtender ? `/avaliar/${d.id}` : `/documento/${d.id}`;
-                return (
-                  <DocumentCard
-                    key={d.id}
-                    title={d.title}
-                    status={d.status}
-                    meta1={`De: ${d.senderSector}`}
-                    meta2={new Date(d.date).toLocaleString()}
-                    actionLabel={label}
-                    actionTo={to}
-                    className="col-6"
-                  />
-                );
-              })}
-              {received.length === 0 && <div style={{ color: "var(--color-muted)" }}>Nenhum pedido na fila</div>}
+            <div className="table-wrapper">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Documento</th>
+                    <th>Remetente</th>
+                    <th>Destino</th>
+                    <th>Status</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const combined = [...received, ...sent];
+                    const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
+                    
+                    return unique
+                      .sort((a, b) => new Date(b.date) - new Date(a.date))
+                      .slice(0, 8)
+                      .map(d => {
+                        const st = normalizeStatus(d.status);
+                        const isPecas = user.sector === "Peças";
+                        const isTarget = d.targetSector === user.sector;
+                        
+                        // Pode atender se for Peças e estiver pendente OU se for o setor de destino e estiver encaminhado
+                        const canEvaluate = (isPecas && st === statuses.PENDENTE) || (isTarget && st === statuses.ENCAMINHADO);
+
+                        return (
+                          <tr key={d.id}>
+                          <td data-label="Documento">
+                            <div className="stack">
+                              <span style={{ fontWeight: 600 }}>{d.title.replace("[NOTA FISCAL] ", "")}</span>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>#{d.id.slice(-4).toUpperCase()}</span>
+                            </div>
+                          </td>
+                          <td data-label="Remetente">{d.senderSector}</td>
+                          <td data-label="Destino">{d.targetSector || "Peças"}</td>
+                          <td data-label="Status"><span className={`status ${statusClass(d.status)}`}>{statusLabel(d.status)}</span></td>
+                          <td data-label="Ações">
+                            <NavLink 
+                              to={canEvaluate ? (d.title.startsWith("[NOTA FISCAL]") ? `/avaliar-nota/${d.id}` : `/avaliar/${d.id}`) : `/documento/${d.id}`} 
+                              className={`btn small ${canEvaluate ? "primary" : ""}`}
+                              style={{ width: '100%' }}
+                            >
+                              {canEvaluate ? "Atender" : "Detalhes"}
+                            </NavLink>
+                          </td>
+                        </tr>
+                        );
+                      });
+                  })()}
+                  {[...received, ...sent].length === 0 && (
+                    <tr>
+                      <td colSpan="5" className="empty">Nenhuma atividade recente</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
-        )}
-        {can("view_sent") && (
-          <div className="card col-12">
+
+          {/* Notifications */}
+          <div className="card">
             <div className="card-header">
-              <div className="card-title">Meus pedidos recentes</div>
-              <NavLink className="btn small" to="/enviados">Ver todos</NavLink>
-            </div>
-            <div className="doc-grid">
-              {[...sent].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,6).map(d => (
-                <DocumentCard
-                  key={d.id}
-                  title={d.title}
-                  status={d.status}
-                  meta1={`Para: ${d.targetSector || "Peças"}`}
-                  meta2={new Date(d.date).toLocaleString()}
-                  actionLabel={"Detalhes"}
-                  actionTo={`/documento/${d.id}`}
-                  className="col-6"
-               />
-              ))}
-              {sent.length === 0 && <div style={{ color: "var(--color-muted)" }}>Nenhum pedido no momento</div>}
-            </div>
-          </div>
-        )}
-        <div className="card col-12">
-          <div className="card-header">
-            <div className="card-title">Notificações</div>
-            <div className="actions">
-              <span className="chip">{notifications.length} novas</span>
+              <div className="card-title">Notificações {notifications.length > 0 && <span className="notification-badge" style={{ display: 'inline-flex', marginLeft: 8 }}>{notifications.length}</span>}</div>
               <NavLink className="btn small" to="/notificacoes">Ver todas</NavLink>
             </div>
-          </div>
-          <div className="notif-list">
-            {[...notifications].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5).map(n => (
-              <NotificationItem
-                key={n.id}
-                title={n.documentTitle || n.documentId.slice(-6).toUpperCase()}
-                status={n.newStatus}
-                reviewerSector={n.reviewerSector}
-                date={n.date}
-                isNew={Date.now() - new Date(n.date).getTime() < 24*60*60*1000}
-              />
-            ))}
-            {notifications.length === 0 && <div style={{ color: "var(--color-muted)" }}>Sem notificações no momento</div>}
+            <div className="notif-list">
+              {notifications.slice(0, 8).map(n => (
+                <NotificationItem
+                  key={n.id}
+                  title={n.documentTitle || "Documento"}
+                  status={n.newStatus}
+                  reviewerSector={n.reviewerSector}
+                  date={n.date}
+                  isNew={true}
+                />
+              ))}
+              {notifications.length === 0 && <div className="empty">Sem novas notificações</div>}
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Footer removido - movido para o topo */}
     </>
   );
 }

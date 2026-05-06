@@ -22,7 +22,7 @@ export default function Sidebar({ items, onLogout }) {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <Logo size={36} src="/logo-icon.png" />
+        <Logo size={36} src="/logo-menu.png" />
         <div>
           <div className="title">SetorLink</div>
         </div>
@@ -30,14 +30,16 @@ export default function Sidebar({ items, onLogout }) {
       <nav className="nav">
         {items.map((item) =>
           item.to ? (
-            <NavLink key={item.label} to={item.to} end={item.end} aria-label={item.label}>
+            <NavLink key={item.label} to={item.to} end={item.end} aria-label={item.label} className="nav-link-with-badge">
               <span className="nav-ico-svg">{iconFor(item.icon)}</span>
               <span className="nav-label">{item.label}</span>
+              {item.badge && <span className="nav-badge-dot" />}
             </NavLink>
           ) : (
-            <button key={item.label} className="btn" style={{ justifyContent: "flex-start" }} aria-label={item.label}>
+            <button key={item.label} className="btn nav-link-with-badge" style={{ justifyContent: "flex-start" }} aria-label={item.label}>
               <span className="nav-ico-svg">{iconFor(item.icon)}</span>
               <span className="nav-label">{item.label}</span>
+              {item.badge && <span className="nav-badge-dot" />}
             </button>
           )
         )}

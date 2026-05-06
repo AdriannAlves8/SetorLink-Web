@@ -68,6 +68,7 @@ export default function Profile() {
     <>
       <div className="content-header">
         <div className="page-title">Editar Perfil</div>
+        <div className="chip">{user?.sector}</div>
       </div>
       <div className="card col-12">
         <div className="card-header">

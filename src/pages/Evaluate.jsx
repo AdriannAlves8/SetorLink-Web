@@ -19,15 +19,34 @@ export default function Evaluate() {
   const [loadError, setLoadError] = useState(null);
 
   useEffect(() => {
-    (async () => {
+    async function load() {
       try {
+        setLoading(true);
         const d = await api.getDocumentById(id);
+        
+        // Proteção de Rota: Verifica se o usuário tem permissão para avaliar este documento
+        const st = normalizeStatus(d.status);
+        const isPecas = isPecasSector(user?.sector);
+        const isTarget = d.targetSector === user?.sector;
+        const podeAtender = (isPecas && (st === statuses.PENDENTE || st === statuses.APROVADO || st === statuses.EM_ATENDIMENTO || st === statuses.RECUSADO)) || 
+                            (isTarget && st === statuses.ENCAMINHADO);
+
+        if (!podeAtender) {
+          showToast({ type: "error", message: "Você não tem permissão para avaliar este documento." });
+          navigate("/dashboard");
+          return;
+        }
+
         setDoc(d);
-      } catch (e) {
-        setLoadError(e.message || "Erro ao carregar pedido");
+      } catch (err) {
+        console.error("Erro ao carregar documento:", err);
+        setLoadError(err.message || "Erro ao carregar pedido");
+      } finally {
+        setLoading(false);
       }
-    })();
-  }, [id]);
+    }
+    load();
+  }, [id, navigate, user?.sector])
 
   const openFile = () => {
     try {
@@ -109,6 +128,20 @@ export default function Evaluate() {
   };
 
   if (loadError) return <div style={{ padding: 24 }}>{loadError}</div>;
+  const assume = async () => {
+    try {
+      setLoading(true);
+      await api.assumeOrder(id);
+      showToast({ type: "success", message: "Pedido assumido para atendimento" });
+      const d = await api.getDocumentById(id);
+      setDoc(d);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!doc) return <div style={{ padding: 24 }}>Carregando...</div>;
 
   const st = normalizeStatus(doc.status);
@@ -119,6 +152,7 @@ export default function Evaluate() {
     <>
       <div className="content-header">
         <div className="page-title">Atender pedido</div>
+        <div className="chip">{user?.sector}</div>
       </div>
       <div className="grid">
         <div className="card col-8">
@@ -157,7 +191,7 @@ export default function Evaluate() {
               <span style={{ fontWeight: 600, marginRight: 4 }}>Data:</span> {new Date(doc.date).toLocaleString()}
             </div>
             
-            <div className="stack" style={{ marginTop: 8, padding: "12px", background: "rgba(0,0,0,0.02)", borderRadius: 12, border: "1px solid var(--border)" }}>
+            <div className="stack" style={{ marginTop: 8 }}>
               <div style={{ fontWeight: 700, fontSize: "0.8rem", color: "var(--muted)", marginBottom: 8, letterSpacing: "0.05rem" }}>DADOS DO PEDIDO</div>
               <div className="stack" style={{ gap: 6 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem" }}>
@@ -212,9 +246,9 @@ export default function Evaluate() {
                 {doc.description || "Nenhuma descrição fornecida."}
               </div>
             </div>
-            {st === statuses.REJEITADO && doc.reason && (
+            {st === statuses.RECUSADO && doc.reason && (
               <div className="stack" style={{ marginTop: 12 }}>
-                <div style={{ fontWeight: 700, color: "var(--red)" }}>Motivo da rejeição</div>
+                <div style={{ fontWeight: 700, color: "var(--red)" }}>Motivo da recusa</div>
                 <div style={{ padding: 12, background: "rgba(255,0,0,0.05)", borderRadius: 8, border: "1px solid var(--red)" }}>{doc.reason}</div>
               </div>
             )}
@@ -238,9 +272,9 @@ export default function Evaluate() {
                   <button className="btn success" disabled={loading || !selectedSector} onClick={forward}>Encaminhar pedido</button>
                 </div>
                 <div className="stack" style={{ gap: 8, marginTop: 8 }}>
-                  <label style={{ fontSize: "0.85rem", fontWeight: 600 }}>Ou rejeitar pedido (informe o motivo):</label>
-                  <textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Motivo da rejeição" />
-                  <button className="btn danger" disabled={loading} onClick={reject}>Rejeitar pedido</button>
+                  <label style={{ fontSize: "0.85rem", fontWeight: 600 }}>Ou recusar pedido (informe o motivo):</label>
+                  <textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Motivo da recusa" />
+                  <button className="btn danger" disabled={loading} onClick={reject}>Recusar pedido</button>
                 </div>
               </div>
             )}
@@ -250,38 +284,71 @@ export default function Evaluate() {
               <div className="stack" style={{ marginTop: 16, gap: 12 }}>
                 <div style={{ fontWeight: 700 }}>Ações do seu Setor ({user?.sector})</div>
                 <div className="summary-actions">
-                  <button className="btn success" disabled={loading} onClick={approve}>Aprovar</button>
-                  <button className="btn danger" disabled={loading} onClick={() => {
-                    if (!reason.trim()) {
-                      setError("Informe o motivo da rejeição no campo acima.");
-                      return;
-                    }
-                    reject();
-                  }}>Rejeitar</button>
-                </div>
-                <div className="stack" style={{ gap: 8 }}>
-                  <label style={{ fontSize: "0.85rem", fontWeight: 600 }}>Motivo (obrigatório para rejeitar):</label>
-                  <textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Descreva o motivo caso vá rejeitar" />
-                </div>
-              </div>
-            )}
-
-            {/* Ações de Peças: Finalizar Compra */}
-            {isPecas && (st === statuses.APROVADO_SETOR || st === statuses.EM_ATENDIMENTO) && (
-              <div className="stack" style={{ marginTop: 16, gap: 12 }}>
-                <div style={{ fontWeight: 700 }}>Finalização (Setor Peças)</div>
-                <div className="summary-actions">
-                  <button className="btn primary" style={{ width: "100%" }} disabled={loading} onClick={finalize}>Realizar compra e finalizar</button>
+                  <button className="btn success" style={{ width: "100%" }} disabled={loading} onClick={approve}>Aprovar pedido</button>
                 </div>
                 <div className="stack" style={{ gap: 8, marginTop: 8 }}>
-                  <label style={{ fontSize: "0.85rem", fontWeight: 600 }}>Ou rejeitar se houver erro:</label>
-                  <textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Motivo da rejeição" />
-                  <button className="btn danger" disabled={loading} onClick={reject}>Rejeitar</button>
+                  <label style={{ fontSize: "0.85rem", fontWeight: 600 }}>Ou recusar pedido (informe o motivo):</label>
+                  <textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Motivo da recusa" />
+                  <button className="btn danger" disabled={loading} onClick={reject}>Recusar</button>
                 </div>
               </div>
             )}
 
-            {(!isPecas && !isTarget && st !== statuses.REJEITADO && st !== statuses.FINALIZADO) && (
+            {/* Ações de Peças: Atender ou Finalizar */}
+            {isPecas && (st === statuses.APROVADO || st === statuses.RECUSADO || st === statuses.EM_ATENDIMENTO) && (
+              <div className="stack" style={{ marginTop: 16, gap: 12 }}>
+                <div style={{ fontWeight: 700, color: "var(--primary)" }}>Processamento de Peças</div>
+                
+                {st === statuses.APROVADO && (
+                  <>
+                    <div className="helper" style={{ color: "var(--muted)", marginBottom: 8 }}>
+                      O setor responsável já <strong>aprovou</strong> este pedido. 
+                      Você pode iniciar o processo de compra ou finalizar o pedido.
+                    </div>
+                    <div className="summary-actions" style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                      <button className="btn success" style={{ padding: "14px 20px" }} disabled={loading} onClick={assume}>
+                        Iniciar Compra
+                      </button>
+                      <button className="btn primary" style={{ padding: "14px 20px" }} disabled={loading} onClick={finalize}>
+                        Finalizar Pedido
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {st === statuses.EM_ATENDIMENTO && (
+                  <>
+                    <div className="helper" style={{ color: "var(--muted)", marginBottom: 8 }}>
+                      Você está <strong>atendendo</strong> este pedido (Compra em andamento). 
+                      Clique abaixo para concluir o processo e notificar o autor.
+                    </div>
+                    <div className="summary-actions">
+                      <button className="btn primary" style={{ width: "100%", padding: "14px" }} disabled={loading} onClick={finalize}>
+                        Finalizar Pedido
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {st === statuses.RECUSADO && (
+                  <>
+                    <div className="helper" style={{ color: "var(--muted)", marginBottom: 8 }}>
+                      O setor responsável <strong>recusou</strong> este pedido. 
+                      Você deve finalizar o processo para que o autor seja notificado oficialmente.
+                    </div>
+                    <div className="summary-actions">
+                      <button className="btn primary" style={{ width: "100%", padding: "14px" }} disabled={loading} onClick={finalize}>
+                        Confirmar Recusa e Finalizar
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {st !== statuses.RECUSADO && st !== statuses.FINALIZADO && 
+             !((isPecas && (st === statuses.PENDENTE || st === statuses.APROVADO || st === statuses.EM_ATENDIMENTO)) || 
+               (isTarget && st === statuses.ENCAMINHADO)) && (
               <div className="chip" style={{ marginTop: 16 }}>Aguardando processamento pelos setores responsáveis.</div>
             )}
 

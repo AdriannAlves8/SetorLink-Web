@@ -21,8 +21,17 @@ export default function NewNotaFiscal() {
     async function loadOrders() {
       if (user?.uid) {
         try {
-          const res = await api.getSent(user.uid, user.sector, { page: 1, pageSize: 50 });
-          setUserOrders(res.items);
+          // Busca tanto os pedidos enviados quanto recebidos pelo setor Peças (ou outros)
+          const [sentRes, receivedRes] = await Promise.all([
+            api.getSent(user.uid, user.sector, { page: 1, pageSize: 100 }),
+            api.getReceived(user.sector, { page: 1, pageSize: 100, allStatuses: true })
+          ]);
+          
+          // Combina os resultados e remove duplicatas por ID
+          const combined = [...sentRes.items, ...receivedRes.items];
+          const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
+          
+          setUserOrders(unique);
         } catch (err) {
           console.error("Erro ao carregar pedidos para referência:", err);
         }
@@ -61,9 +70,13 @@ export default function NewNotaFiscal() {
     setLoading(true);
 
     try {
+      const selectedOrder = userOrders.find(o => o.id === propostaId);
+      const propostaTitle = selectedOrder ? selectedOrder.title.replace("[NOTA FISCAL] ", "") : "";
+
       await api.sendNotaFiscal({
         title: title.trim(),
         propostaId,
+        propostaTitle,
         targetSector,
         file,
         senderSector: user.sector
@@ -81,7 +94,7 @@ export default function NewNotaFiscal() {
   if (user?.sector !== "Peças") return <div className="content">Acesso negado. Apenas o setor Peças pode enviar notas fiscais.</div>;
 
   return (
-    <div className="content">
+    <>
       <div className="content-header">
         <div className="page-title">Enviar Nota Fiscal</div>
         <div className="chip">{user?.sector}</div>
@@ -101,9 +114,11 @@ export default function NewNotaFiscal() {
         <div className="form-row">
           <label>Pedido de Referência (Opcional)</label>
           <select value={propostaId} onChange={(e) => setPropostaId(e.target.value)}>
-            <option value="">Selecione um pedido...</option>
+            <option value="">Selecione um pedido para vincular esta nota...</option>
             {userOrders.map(o => (
-              <option key={o.id} value={o.id}>{o.title}</option>
+              <option key={o.id} value={o.id}>
+                {o.title.replace("[NOTA FISCAL] ", "")} ({new Date(o.date).toLocaleDateString()})
+              </option>
             ))}
           </select>
         </div>
@@ -124,7 +139,7 @@ export default function NewNotaFiscal() {
           <div className="helper">Máximo 10MB. Apenas PDF.</div>
         </div>
 
-        {error && <div className="chip" style={{ color: "var(--red)", marginTop: 8 }}>{error}</div>}
+        {error && <div className="chip danger" style={{ marginTop: 8 }}>{error}</div>}
 
         <div className="actions" style={{ marginTop: 20 }}>
           <button className="btn primary" disabled={loading}>
@@ -132,6 +147,6 @@ export default function NewNotaFiscal() {
           </button>
         </div>
       </form>
-    </div>
+    </>
   );
 }

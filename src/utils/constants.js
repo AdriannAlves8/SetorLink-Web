@@ -38,14 +38,13 @@ export const sectorEmails = {
   "Manutenção": "pedroandre@solaristransportes.com.br"
 };
 
-/** Valores gravados no Appwrite para novos pedidos (Pedido de Compra centralizado em Peças) */
 export const statuses = {
-  PENDENTE: "PENDENTE",
+  PENDENTE: "CRIADO",
   EM_ATENDIMENTO: "EM_ATENDIMENTO",
   ENCAMINHADO: "ENCAMINHADO",
-  APROVADO_SETOR: "APROVADO_SETOR",
+  APROVADO: "APROVADO",
   FINALIZADO: "FINALIZADO",
-  REJEITADO: "REJEITADO"
+  RECUSADO: "RECUSADO"
 };
 
 function normKey(s) {
@@ -56,9 +55,8 @@ function normKey(s) {
     .toLowerCase();
 }
 
-/**
+/**np
  * Converte qualquer status legado ou atual para um dos valores canônicos em `statuses`.
- * Legado: "Pendente"/"Aprovado"/"Reprovado" → PENDENTE / FINALIZADO / REJEITADO
  */
 export function normalizeStatus(s) {
   const raw = String(s ?? "").trim();
@@ -67,12 +65,13 @@ export function normalizeStatus(s) {
   if (Object.values(statuses).includes(raw)) {
     return raw;
   }
-  if (n === "pendente" || n === "em_analise" || n === "emanalise") return statuses.PENDENTE;
+  
+  if (n === "pendente" || n === "criado" || n === "em_analise" || n === "emanalise") return statuses.PENDENTE;
   if (n === "em_atendimento" || n === "ematendimento") return statuses.EM_ATENDIMENTO;
   if (n === "encaminhado") return statuses.ENCAMINHADO;
-  if (n === "aprovado_setor") return statuses.APROVADO_SETOR;
-  if (n === "finalizado" || n === "aprovado") return statuses.FINALIZADO;
-  if (n === "rejeitado" || n === "reprovado") return statuses.REJEITADO;
+  if (n === "aprovado_setor" || n === "aprovado") return statuses.APROVADO;
+  if (n === "finalizado") return statuses.FINALIZADO;
+  if (n === "rejeitado" || n === "reprovado" || n === "recusado") return statuses.RECUSADO;
 
   return statuses.PENDENTE;
 }
@@ -82,11 +81,11 @@ export function statusLabel(s) {
   const n = normalizeStatus(s);
   switch (n) {
     case statuses.PENDENTE: return "Em análise";
-    case statuses.ENCAMINHADO: return "Em análise";
-    case statuses.APROVADO_SETOR: return "Aguardando compra";
     case statuses.EM_ATENDIMENTO: return "Em atendimento";
+    case statuses.ENCAMINHADO: return "Encaminhado";
+    case statuses.APROVADO: return "Aprovado (Aguardando compra)";
     case statuses.FINALIZADO: return "Finalizado";
-    case statuses.REJEITADO: return "Rejeitado";
+    case statuses.RECUSADO: return "Rejeitado";
     default: return String(s || "—");
   }
 }
@@ -101,9 +100,11 @@ export function isPrivilegedSector(sector) {
 
 export function statusClass(s) {
   const n = normalizeStatus(s);
-  if (n === statuses.FINALIZADO) return "finalizado";
-  if (n === statuses.REJEITADO) return "rejeitado";
-  if (n === statuses.EM_ATENDIMENTO || n === statuses.ENCAMINHADO || n === statuses.APROVADO_SETOR) return "em_atendimento";
-  if (n === statuses.PENDENTE) return "pendente";
+  if (n === statuses.FINALIZADO) return "finalizado"; // Verde escuro
+  if (n === statuses.APROVADO) return "aprovado"; // Verde claro
+  if (n === statuses.RECUSADO) return "rejeitado"; // Vermelho
+  if (n === statuses.EM_ATENDIMENTO) return "em_atendimento"; // Azul
+  if (n === statuses.ENCAMINHADO) return "encaminhado"; // Roxo ou Azul claro
+  if (n === statuses.PENDENTE) return "pendente"; // Laranja
   return "pendente";
 }

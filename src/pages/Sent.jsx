@@ -8,9 +8,15 @@ import * as XLSX from "xlsx";
 import { ExportIcon } from "../components/Icons.jsx";
 import { showToast } from "../components/Toast.jsx";
 
-export default function Sent({ compose = true }) {
+export default function Sent({ compose = false }) {
   const { user, can } = useAuth();
   const navigate = useNavigate();
+
+  const [isComposing, setIsComposing] = useState(compose);
+
+  useEffect(() => {
+    setIsComposing(compose);
+  }, [compose]);
 
   const [docs, setDocs] = useState([]);
   const [title, setTitle] = useState("");
@@ -30,7 +36,7 @@ export default function Sent({ compose = true }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [loadingList, setLoadingList] = useState(false);
 
-  const canExport = user?.sector === "RH" || user?.sector === "Peças";
+  const canExport = user?.sector === "Peças";
 
   async function load() {
     try {
@@ -160,61 +166,115 @@ export default function Sent({ compose = true }) {
   };
 
   const filteredDocs = useMemo(() => {
-    return docs.filter((d) =>
-      filter === "Todos" ? true : normalizeStatus(d.status) === filter
-    );
+    return docs.filter((d) => {
+      if (filter === "Todos") return true;
+      if (filter === "ANALISE") {
+        const st = normalizeStatus(d.status);
+        return st === statuses.PENDENTE || st === statuses.ENCAMINHADO || st === statuses.EM_ATENDIMENTO;
+      }
+      return normalizeStatus(d.status) === filter;
+    });
   }, [docs, filter]);
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     try {
-      const evaluated = docs.filter(
-        (d) => normalizeStatus(d.status) !== statuses.PENDENTE
+      setLoadingList(true);
+      // Busca Pedidos (Sent + Received) e Notas Fiscais para Peças
+      const [sentRes, receivedRes, notasRec, notasSent] = await Promise.all([
+        api.getSent(user.uid, user.sector, { page: 1, pageSize: 2000 }),
+        api.getReceived(user.sector, { page: 1, pageSize: 2000, allStatuses: true }),
+        api.getNotasFiscais(user.sector, "received"),
+        api.getNotasFiscais(user.sector, "sent")
+      ]);
+      
+      // Combina tudo e remove duplicatas
+      const combined = [...sentRes.items, ...receivedRes.items, ...notasRec.items, ...notasSent.items];
+      const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
+
+      const processed = unique.filter(
+        (d) => normalizeStatus(d.status) === statuses.FINALIZADO || normalizeStatus(d.status) === statuses.REJEITADO
       );
 
-      if (evaluated.length === 0) {
-        alert("Não há pedidos com status já processado para exportar.");
+      if (processed.length === 0) {
+        showToast({ type: "info", message: "Não há registros finalizados ou rejeitados para exportar." });
         return;
       }
 
-      const headers = ["Título","Descrição","Enviado por","Status","Motivo","Documento"];
-      const rows = evaluated.map((d) => {
+      const headers = [
+        "Tipo",
+        "Data",
+        "Título",
+        "Produto",
+        "Código",
+        "Descrição",
+        "Finalidade",
+        "Recorrente",
+        "Valor (R$)",
+        "Remetente",
+        "Destino",
+        "Status",
+        "Motivo Rejeição",
+        "Data Finalizado",
+        "Documento"
+      ];
+
+      const rows = processed.map((d) => {
         let docUrl = "";
         try { if (d.fileData) docUrl = api.getFileViewUrl(d.fileData); } catch {}
         const prettyLink = docUrl ? { t: "s", v: "Abrir", l: { Target: docUrl } } : "";
+        const isNota = d.title.startsWith("[NOTA FISCAL]");
+        
         return [
-          d.title,
+          isNota ? "Nota Fiscal" : "Pedido",
+          new Date(d.date).toLocaleString(),
+          d.title.replace("[NOTA FISCAL] ", ""),
+          d.nomeProduto || "",
+          d.codigoProduto || "",
           d.description || "",
+          d.finalidade || "",
+          d.recorrente ? "Sim" : "Não",
+          d.valor != null ? d.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "",
           d.senderSector || "",
+          d.targetSector || "Peças",
           statusLabel(d.status),
           d.reason || "",
+          d.dataFinalizado ? new Date(d.dataFinalizado).toLocaleString() : "",
           prettyLink
         ];
       });
+
       const aoa = [headers, ...rows];
       const worksheet = XLSX.utils.aoa_to_sheet(aoa);
+      
+      // Ajuste de largura das colunas
       worksheet["!cols"] = [
-        { wch: 30 },
-        { wch: 50 },
-        { wch: 16 },
-        { wch: 18 },
-        { wch: 20 },
-        { wch: 10 }
+        { wch: 15 }, // Tipo
+        { wch: 20 }, // Data
+        { wch: 30 }, // Título
+        { wch: 25 }, // Produto
+        { wch: 15 }, // Código
+        { wch: 40 }, // Descrição
+        { wch: 25 }, // Finalidade
+        { wch: 12 }, // Recorrente
+        { wch: 15 }, // Valor
+        { wch: 16 }, // Remetente
+        { wch: 16 }, // Destino
+        { wch: 18 }, // Status
+        { wch: 25 }, // Motivo
+        { wch: 20 }, // Data Finalizado
+        { wch: 10 }  // Documento
       ];
+
       const workbook = XLSX.utils.book_new();
-
-      XLSX.utils.book_append_sheet(
-        workbook,
-        worksheet,
-        "Pedidos"
-      );
-
-      XLSX.writeFile(
-        workbook,
-        `pedidos_${user.sector}_${Date.now()}.xlsx`
-      );
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Pedidos");
+      XLSX.writeFile(workbook, `pedidos_export_${user.sector}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      
+      showToast({ type: "success", message: "Planilha exportada com sucesso" });
     } catch (err) {
       console.error("Erro ao exportar:", err);
-      alert("Erro ao exportar planilha.");
+      showToast({ type: "error", message: "Erro ao exportar planilha" });
+    } finally {
+      setLoadingList(false);
     }
   };
 
@@ -229,12 +289,12 @@ export default function Sent({ compose = true }) {
     <>
       <div className="content-header">
         <div className="page-title">
-          {compose ? "Criar Pedido" : "Pedidos enviados"}
+          {user?.sector === "Peças" ? "Notas Fiscais Enviadas" : (isComposing ? "Criar Pedido" : "Pedidos enviados")}
         </div>
         <div className="chip">{user?.sector}</div>
       </div>
 
-      {compose && can("send") && (
+      {isComposing && can("send") && (
         <form className="form stack" onSubmit={send}>
           <div className="helper" style={{ color: "var(--muted)", marginBottom: 4 }}>
             O pedido será analisado exclusivamente pelo setor Peças.
@@ -372,15 +432,15 @@ export default function Sent({ compose = true }) {
         </form>
       )}
 
-      {!compose && (
+      {!isComposing && (
         <>
           <StatusFilter value={filter} onChange={setFilter} />
 
           {canExport && (
             <div className="actions" style={{ marginBottom: 8, justifyContent: "flex-end" }}>
-              <button className="btn primary export-btn" onClick={exportToExcel}>
+              <button className="btn primary export-btn" onClick={exportToExcel} disabled={loadingList}>
                 <ExportIcon />
-                Exportar pedidos processados
+                Exportar registros processados
               </button>
             </div>
           )}

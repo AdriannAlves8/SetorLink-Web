@@ -79,7 +79,7 @@ export default function EvaluateNota() {
   const canEvaluate = isTarget && st === statuses.PENDENTE;
 
   return (
-    <div className="content">
+    <>
       <div className="content-header">
         <div className="page-title">Avaliar Nota Fiscal</div>
         <div className="chip">{user?.sector}</div>
@@ -122,10 +122,19 @@ export default function EvaluateNota() {
               <span style={{ fontWeight: 600, marginRight: 4 }}>Data:</span> {new Date(doc.date).toLocaleString()}
             </div>
             
-            <div className="stack" style={{ marginTop: 8 }}>
-              <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>Descrição / Referência</div>
-              <div style={{ padding: "12px", background: "var(--bg-alt, #f9f9f9)", borderRadius: 8, border: "1px solid var(--border)" }}>
-                {doc.description}
+            <div className="stack" style={{ marginTop: 8, padding: "16px", background: "var(--bg-card, #fff)", borderRadius: 12, border: "1px solid var(--border)", boxShadow: "0 2px 4px rgba(0,0,0,0.02)" }}>
+              <div style={{ fontWeight: 700, fontSize: "0.75rem", color: "var(--primary)", marginBottom: 12, letterSpacing: "0.08rem", textTransform: "uppercase" }}>Descrição / Referência</div>
+              <div style={{ 
+                whiteSpace: "pre-wrap", 
+                padding: "16px", 
+                background: "var(--bg-alt, #f9f9f9)", 
+                borderRadius: "12px",
+                fontSize: "0.9rem",
+                lineHeight: "1.6",
+                border: "1px solid var(--border)",
+                color: "var(--text-main)"
+              }}>
+                {doc.description || "Nenhuma descrição fornecida."}
               </div>
             </div>
 
@@ -158,6 +167,6 @@ export default function EvaluateNota() {
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

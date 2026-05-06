@@ -1,6 +1,3 @@
-// Permissões: fluxo centralizado em Peças (pedidos de compra).
-// setorDestino não é usado na lógica; qualquer setor autenticado pode enviar (send).
-
 const base = {
   destinations: [],
   hidden_sent_from: []
@@ -9,8 +6,8 @@ const base = {
 const common = {
   send: true,
   view_sent: true,
-  view_received: true, // Todos podem ver o que receberam de Peças para avaliar
-  evaluate: true, // Todos podem aprovar/rejeitar o que receberam
+  view_received: true, 
+  evaluate: true, 
   delete_if_pending: true,
   reset_password: false,
   notifications: true,
@@ -27,19 +24,11 @@ export const acl = {
   "Tráfego Solaris": { ...common },
   "Segurança": { ...common },
   "Qualidade": { ...common },
-  "RH": {
-    send: true,
-    view_sent: true,
-    view_received: true, 
-    evaluate: true,
-    delete_if_pending: true,
-    reset_password: true,
-    notifications: true,
-    ...base
-  },
+  "RH": { ...common},
   "Financeiro": { ...common },
   "Assistência Técnica": { ...common },
   "Funilaria": { ...common },
+  "TI": { ...common },
   "Peças": {
     send: true,
     view_sent: true,
@@ -50,5 +39,5 @@ export const acl = {
     notifications: true,
     ...base
   },
-  "TI": { ...common }
+  
 };

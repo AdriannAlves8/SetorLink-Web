@@ -7,6 +7,7 @@ import {
   useLocation
 } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import * as api from "../services/api.js";
 import Login from "../pages/Login.jsx";
 import Dashboard from "../pages/Dashboard.jsx";
 import Received from "../pages/Received.jsx";
@@ -25,6 +26,7 @@ import NewNotaFiscal from "../pages/NewNotaFiscal.jsx";
 import ReceivedNotas from "../pages/ReceivedNotas.jsx";
 import EvaluateNota from "../pages/EvaluateNota.jsx";
 import ToastManager from "../components/Toast.jsx";
+import { normalizeStatus, statuses } from "../utils/constants.js";
 
 function Protected({ children, permission }) {
   const { user, loading, can } = useAuth();
@@ -45,6 +47,46 @@ function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+
+  const [counts, setCounts] = useState({ received: 0, notas: 0, notifications: 0 });
+
+  const fetchData = async () => {
+    if (!user?.sector) return;
+    try {
+      const [receivedRes, notasRes, notifsRes] = await Promise.all([
+        can("view_received") ? api.getReceived(user.sector, { page: 1, pageSize: 50, allStatuses: true }) : Promise.resolve({ items: [], total: 0 }),
+        can("view_received") ? api.getNotasFiscais(user.sector, "received") : Promise.resolve({ items: [] }),
+        can("notifications") ? api.getNotifications(user.sector) : Promise.resolve([])
+      ]);
+
+      const isPecas = user.sector === "Peças";
+      
+      // Contagem de pedidos pendentes para o setor atual
+      const pendingOrders = receivedRes.items.filter(d => {
+        const st = normalizeStatus(d.status);
+        const isTarget = d.targetSector === user.sector;
+        return (isPecas && st === statuses.PENDENTE) || (isTarget && st === statuses.ENCAMINHADO);
+      }).length;
+
+      const pendingNotas = notasRes.items.filter(n => normalizeStatus(n.status) === statuses.PENDENTE).length;
+      
+      setCounts({
+        received: pendingOrders,
+        notas: pendingNotas,
+        notifications: notifsRes.filter(n => !n.read).length || notifsRes.length
+      });
+    } catch (err) {
+      console.error("Erro ao carregar contadores:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+    const unsub = api.subscribe([api.CHANNELS.PROPOSTAS, api.CHANNELS.NOTIFICACOES], () => {
+      fetchData();
+    });
+    return () => unsub();
+  }, [user?.sector]);
 
   const doLogout = () => {
     logout();
@@ -88,22 +130,36 @@ function Layout({ children }) {
           items={[
             { label: "Dashboard", to: "/", end: true, icon: "home" },
             ...(can("send")
-              ? [{ label: "Novo pedido", to: "/enviar", icon: "compose" }]
-              : []),
-            ...(user?.sector === "Peças"
-              ? [{ label: "Enviar Nota Fiscal", to: "/enviar-nota", icon: "file-text" }]
-              : []),
-            ...(can("view_received")
-              ? [{ label: "Pedidos para Atender", to: "/recebidos", icon: "received" }]
+              ? (user?.sector === "Peças" 
+                  ? [{ label: "Enviar Nota Fiscal", to: "/enviar-nota", icon: "file-text" }]
+                  : [{ label: "Novo pedido", to: "/enviar", icon: "compose" }])
               : []),
             ...(can("view_received")
-              ? [{ label: "Notas Fiscais", to: "/receber-notas", icon: "received" }]
+              ? [{ 
+                  label: "Pedidos para Atender", 
+                  to: "/recebidos", 
+                  icon: "received", 
+                  badge: user?.sector === "Peças" && counts.received > 0 
+                }]
+              : []),
+            ...(can("view_received")
+              ? [{ 
+                  label: "Notas Recebidas", 
+                  to: "/receber-notas", 
+                  icon: "file-text", 
+                  badge: counts.notas > 0 
+                }]
               : []),
             ...(can("view_sent")
-              ? [{ label: "Pedidos Enviados", to: "/enviados", icon: "sent" }]
+              ? [{ label: user?.sector === "Peças" ? "Notas Enviadas" : "Pedidos Enviados", to: "/enviados", icon: "sent" }]
               : []),
             ...(can("notifications")
-              ? [{ label: "Notificações", to: "/notificacoes", icon: "bell" }]
+              ? [{ 
+                  label: "Notificações", 
+                  to: "/notificacoes", 
+                  icon: "bell", 
+                  badge: counts.notifications > 0 
+                }]
               : []),
             { label: "Perfil", to: "/perfil", icon: "user" }
           ]}
@@ -138,7 +194,6 @@ function Layout({ children }) {
           </button>
         </div>
         {children}
-        <ToastManager />
       </main>
 
       {confirmLogout && (
@@ -168,134 +223,137 @@ function Layout({ children }) {
 
 export default function AppRouter() {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/invite" element={<AcceptInvite />} />
-      <Route path="/verify" element={<VerifyEmail />} />
-      <Route path="/recuperar" element={<Recover />} />
+    <>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/invite" element={<AcceptInvite />} />
+        <Route path="/verify" element={<VerifyEmail />} />
+        <Route path="/recuperar" element={<Recover />} />
 
-      <Route
-        path="/"
-        element={
-          <Protected>
-            <Layout>
-              <Dashboard />
-            </Layout>
-          </Protected>
-        }
-      />
+        <Route
+          path="/"
+          element={
+            <Protected>
+              <Layout>
+                <Dashboard />
+              </Layout>
+            </Protected>
+          }
+        />
 
-      <Route
-        path="/recebidos"
-        element={
-          <Protected permission="view_received">
-            <Layout>
-              <Received />
-            </Layout>
-          </Protected>
-        }
-      />
+        <Route
+          path="/recebidos"
+          element={
+            <Protected permission="view_received">
+              <Layout>
+                <Received />
+              </Layout>
+            </Protected>
+          }
+        />
 
-      <Route
-        path="/receber-notas"
-        element={
-          <Protected permission="view_received">
-            <Layout>
-              <ReceivedNotas />
-            </Layout>
-          </Protected>
-        }
-      />
+        <Route
+          path="/receber-notas"
+          element={
+            <Protected permission="view_received">
+              <Layout>
+                <ReceivedNotas />
+              </Layout>
+            </Protected>
+          }
+        />
 
-      <Route
-        path="/avaliar-nota/:id"
-        element={
-          <Protected>
-            <Layout>
-              <EvaluateNota />
-            </Layout>
-          </Protected>
-        }
-      />
+        <Route
+          path="/avaliar-nota/:id"
+          element={
+            <Protected permission="evaluate">
+              <Layout>
+                <EvaluateNota />
+              </Layout>
+            </Protected>
+          }
+        />
 
-      <Route
-        path="/enviados"
-        element={
-          <Protected permission="view_sent">
-            <Layout>
-              <Sent compose={false} />
-            </Layout>
-          </Protected>
-        }
-      />
+        <Route
+          path="/enviados"
+          element={
+            <Protected permission="view_sent">
+              <Layout>
+                <Sent />
+              </Layout>
+            </Protected>
+          }
+        />
 
-      <Route
-        path="/enviar"
-        element={
-          <Protected permission="send">
-            <Layout>
-              <Sent compose />
-            </Layout>
-          </Protected>
-        }
-      />
+        <Route
+          path="/enviar"
+          element={
+            <Protected permission="send">
+              <Layout>
+                <Sent compose={true} />
+              </Layout>
+            </Protected>
+          }
+        />
 
-      <Route
-        path="/enviar-nota"
-        element={
-          <Protected permission="send">
-            <Layout>
-              <NewNotaFiscal />
-            </Layout>
-          </Protected>
-        }
-      />
+        <Route
+          path="/enviar-nota"
+          element={
+            <Protected>
+              <Layout>
+                <NewNotaFiscal />
+              </Layout>
+            </Protected>
+          }
+        />
 
-      <Route
-        path="/avaliar/:id"
-        element={
-          <Protected>
-            <Layout>
-              <Evaluate />
-            </Layout>
-          </Protected>
-        }
-      />
+        <Route
+          path="/avaliar/:id"
+          element={
+            <Protected permission="evaluate">
+              <Layout>
+                <Evaluate />
+              </Layout>
+            </Protected>
+          }
+        />
 
-      <Route
-        path="/notificacoes"
-        element={
-          <Protected permission="notifications">
-            <Layout>
-              <Notifications />
-            </Layout>
-          </Protected>
-        }
-      />
+        <Route
+          path="/notificacoes"
+          element={
+            <Protected permission="notifications">
+              <Layout>
+                <Notifications />
+              </Layout>
+            </Protected>
+          }
+        />
 
-      <Route
-        path="/perfil"
-        element={
-          <Protected>
-            <Layout>
-              <Profile />
-            </Layout>
-          </Protected>
-        }
-      />
+        <Route
+          path="/perfil"
+          element={
+            <Protected>
+              <Layout>
+                <Profile />
+              </Layout>
+            </Protected>
+          }
+        />
 
-      <Route
-        path="/documento/:id"
-        element={
-          <Protected>
-            <Layout>
-              <DocumentDetail />
-            </Layout>
-          </Protected>
-        }
-      />
+        <Route
+          path="/documento/:id"
+          element={
+            <Protected>
+              <Layout>
+                <DocumentDetail />
+              </Layout>
+            </Protected>
+          }
+        />
 
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+      <ToastManager />
+    </>
   );
 }

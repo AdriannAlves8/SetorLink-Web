@@ -116,6 +116,7 @@ export default function DocumentDetail() {
     <>
       <div className="content-header">
         <div className="page-title">Detalhes do pedido</div>
+        <div className="chip">{user?.sector}</div>
       </div>
       <div className="grid">
         <div className="card col-8">

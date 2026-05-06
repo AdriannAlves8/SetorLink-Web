@@ -22,11 +22,6 @@ export default function Header({ title, user, onToggleSidebar }) {
           )}
         </div>
         <div className="user-name">{user?.name || user?.sector}</div>
-        <div className="chev">
-          <svg width="14" height="14" viewBox="0 0 14 14">
-            <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" />
-          </svg>
-        </div>
       </div>
     </div>
   );
