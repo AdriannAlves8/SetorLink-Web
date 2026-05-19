@@ -135,7 +135,7 @@ export default function AdminDashboard() {
         <div className="card">
           <div className="daily-summary-header">
             <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <className size={18} />
+              <ActivityIcon size={18} />
               Logs de Auditoria Recentes
             </div>
             <NavLink className="btn small" to="/admin/logs" style={{ fontSize: '0.85rem' }}>Ver logs completos</NavLink>

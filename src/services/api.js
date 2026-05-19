@@ -1460,26 +1460,37 @@ export async function logWorkflowForSectors({ acao, entidade, entidade_id, detal
 export async function getAdminStats() {
   await assertPermission(PERMISSIONS.ADMIN_DASHBOARD);
   
-  const [users, orders, sectorsRes] = await Promise.all([
-    databases.listDocuments(DB_ID, COL_USUARIOS, [Query.limit(5000)]),
-    databases.listDocuments(DB_ID, COL_PROPOSTAS, [Query.limit(1)]),
-    adminListSectors()
-  ]);
-  
-  // Define "online" como usuários que acessaram o sistema nos últimos 5 minutos
-  const cincoMinutosAtras = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-  
-  const activeUsersCount = users.documents.filter(u => {
-    const ultimoAcesso = u.ultimoAcesso || u.lastLogin;
-    return ultimoAcesso && ultimoAcesso >= cincoMinutosAtras;
-  }).length;
+  try {
+    const [usersRes, ordersRes, sectorsRes] = await Promise.all([
+      databases.listDocuments(DB_ID, COL_USUARIOS, [Query.limit(5000)]),
+      databases.listDocuments(DB_ID, COL_PROPOSTAS, [Query.limit(1)]),
+      adminListSectors()
+    ]);
+    
+    // Define "online" como usuários que acessaram o sistema nos últimos 15 minutos (aumentado de 5 para ser mais realista)
+    const tempoLimite = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    
+    const activeUsersCount = usersRes.documents.filter(u => {
+      const ultimoAcesso = u.ultimoAcesso || u.lastLogin || u.$updatedAt;
+      return ultimoAcesso && ultimoAcesso >= tempoLimite;
+    }).length;
 
-  return {
-    totalUsers: users.total,
-    totalOrders: orders.total,
-    activeUsers: activeUsersCount,
-    sectorsCount: sectorsRes.length
-  };
+    return {
+      totalUsers: usersRes.total,
+      totalOrders: ordersRes.total,
+      activeUsers: activeUsersCount,
+      sectorsCount: sectorsRes.length
+    };
+  } catch (err) {
+    console.error("Erro em getAdminStats:", err);
+    // Retorna valores zerados mas não trava a UI
+    return {
+      totalUsers: 0,
+      totalOrders: 0,
+      activeUsers: 0,
+      sectorsCount: 0
+    };
+  }
 }
 
 export async function listAuditLogs({ limit = 100 } = {}) {

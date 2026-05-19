@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { statuses, statusClass, normalizeStatus, statusLabel, isPecasSector, canForwardToSector } from "../utils/constants.js";
 import { PERMISSIONS } from "../utils/acl.js";
 import { showToast } from "../components/Toast.jsx";
+import { CheckIcon, XIcon, CalendarIcon, SendIcon, FileTextIcon } from "../components/Icons.jsx";
 
 export default function Evaluate() {
   const { id } = useParams();
@@ -201,86 +202,103 @@ export default function Evaluate() {
           <div className="card-header">
             <div className="card-title">Informações</div>
           </div>
-          <div className="stack" style={{ gap: 12 }}>
-            <div className="chip" style={{ width: "100%", justifyContent: "flex-start" }}>
-              <span style={{ fontWeight: 600, marginRight: 4 }}>Remetente:</span> {doc.senderSector}
-            </div>
-            <div className="chip" style={{ width: "100%", justifyContent: "flex-start" }}>
-              <span style={{ fontWeight: 600, marginRight: 4 }}>Data:</span> {new Date(doc.date).toLocaleString()}
+          <div className="stack" style={{ gap: 16 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px", background: "var(--bg-alt, #f9f9f9)", borderRadius: "12px", border: "1px solid var(--border)" }}>
+                <div style={{ color: "var(--primary)", background: "rgba(11, 100, 244, 0.08)", padding: "8px", borderRadius: "10px", display: "flex" }}>
+                  <SendIcon size={18} />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <span style={{ fontSize: "0.7rem", color: "var(--muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.02rem" }}>Remetente</span>
+                  <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>{doc.senderSector}</span>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px", background: "var(--bg-alt, #f9f9f9)", borderRadius: "12px", border: "1px solid var(--border)" }}>
+                <div style={{ color: "var(--primary)", background: "rgba(11, 100, 244, 0.08)", padding: "8px", borderRadius: "10px", display: "flex" }}>
+                  <CalendarIcon size={18} />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <span style={{ fontSize: "0.7rem", color: "var(--muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.02rem" }}>Data de envio</span>
+                  <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>{new Date(doc.date).toLocaleString()}</span>
+                </div>
+              </div>
             </div>
             
-            <div className="stack" style={{ marginTop: 8 }}>
-              <div style={{ fontWeight: 700, fontSize: "0.8rem", color: "var(--muted)", marginBottom: 8, letterSpacing: "0.05rem" }}>DADOS DO PEDIDO</div>
-              <div className="stack" style={{ gap: 6 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem" }}>
+            <div className="stack" style={{ padding: "14px", background: "var(--surface)", borderRadius: 14, border: "1px solid var(--border)" }}>
+              <div style={{ fontWeight: 700, fontSize: "0.7rem", color: "var(--primary)", marginBottom: 12, letterSpacing: "0.05rem", textTransform: "uppercase" }}>DADOS DO PEDIDO</div>
+              <div className="stack" style={{ gap: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.9rem" }}>
                   <span style={{ color: "var(--muted)" }}>Produto:</span>
-                  <span style={{ fontWeight: 500, textAlign: "right" }}>{doc.nomeProduto || "—"}</span>
+                  <span style={{ fontWeight: 600, textAlign: "right" }}>{doc.nomeProduto || "—"}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.9rem" }}>
                   <span style={{ color: "var(--muted)" }}>Código:</span>
-                  <span style={{ fontWeight: 500, textAlign: "right" }}>{doc.codigoProduto || "—"}</span>
+                  <span style={{ fontWeight: 600, textAlign: "right" }}>{doc.codigoProduto || "—"}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.9rem" }}>
                   <span style={{ color: "var(--muted)" }}>Finalidade:</span>
-                  <span style={{ fontWeight: 500, textAlign: "right" }}>{doc.finalidade || "—"}</span>
+                  <span style={{ fontWeight: 600, textAlign: "right" }}>{doc.finalidade || "—"}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.9rem" }}>
                   <span style={{ color: "var(--muted)" }}>Controle:</span>
-                  <span style={{ fontWeight: 500, textAlign: "right" }}>{doc.recorrente ? "Recorrente" : "Único"}</span>
+                  <span style={{ fontWeight: 600, textAlign: "right" }}>{doc.recorrente ? "Recorrente" : "Único"}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "1rem", marginTop: 4, paddingTop: 4, borderTop: "1px dashed var(--border)" }}>
-                  <span style={{ fontWeight: 600 }}>Valor:</span>
-                  <span style={{ fontWeight: 700, color: "var(--primary)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "1.1rem", marginTop: 6, paddingTop: 10, borderTop: "1px dashed var(--border)" }}>
+                  <span style={{ fontWeight: 700 }}>Valor:</span>
+                  <span style={{ fontWeight: 800, color: "var(--primary)" }}>
                     {doc.valor ? `R$ ${doc.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="stack" style={{ gap: 6 }}>
-              {doc.dataAssumido && (
-                <div className="chip" style={{ width: "100%", justifyContent: "flex-start", fontSize: "0.85rem", opacity: 0.8 }}>
-                  <span style={{ fontWeight: 600, marginRight: 4 }}>Assumido em:</span> {new Date(doc.dataAssumido).toLocaleString()}
-                </div>
-              )}
-              {doc.dataFinalizado && (
-                <div className="chip" style={{ width: "100%", justifyContent: "flex-start", fontSize: "0.85rem", opacity: 0.8 }}>
-                  <span style={{ fontWeight: 600, marginRight: 4 }}>Finalizado em:</span> {new Date(doc.dataFinalizado).toLocaleString()}
-                </div>
-              )}
-            </div>
+            {(doc.dataAssumido || doc.dataFinalizado) && (
+              <div className="stack" style={{ gap: 8 }}>
+                {doc.dataAssumido && (
+                  <div className="chip" style={{ width: "100%", justifyContent: "flex-start", fontSize: "0.8rem", background: "rgba(0,0,0,0.02)" }}>
+                    <span style={{ fontWeight: 600, marginRight: 4 }}>Assumido em:</span> {new Date(doc.dataAssumido).toLocaleString()}
+                  </div>
+                )}
+                {doc.dataFinalizado && (
+                  <div className="chip" style={{ width: "100%", justifyContent: "flex-start", fontSize: "0.8rem", background: "rgba(0,0,0,0.02)" }}>
+                    <span style={{ fontWeight: 600, marginRight: 4 }}>Finalizado em:</span> {new Date(doc.dataFinalizado).toLocaleString()}
+                  </div>
+                )}
+              </div>
+            )}
 
-            <div className="stack" style={{ marginTop: 8 }}>
-              <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>Descrição</div>
-              <div style={{ 
-                whiteSpace: "pre-wrap", 
-                padding: "12px", 
-                background: "var(--bg-alt, #f9f9f9)", 
-                borderRadius: 8,
-                fontSize: "0.95rem",
-                lineHeight: "1.5",
-                border: "1px solid var(--border)"
-              }}>
+            <div style={{ background: "var(--surface)", borderRadius: "14px", border: "1px solid var(--border)", overflow: "hidden" }}>
+              <div style={{ padding: "8px 14px", background: "rgba(11, 100, 244, 0.03)", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "8px" }}>
+                <FileTextIcon size={16} style={{ color: "var(--primary)" }} />
+                <span style={{ fontWeight: 700, fontSize: "0.7rem", color: "var(--primary)", letterSpacing: "0.04rem", textTransform: "uppercase" }}>Descrição</span>
+              </div>
+              <div style={{ padding: "12px 14px", fontSize: "0.9rem", lineHeight: "1.6", color: "var(--text)", whiteSpace: "pre-wrap" }}>
                 {doc.description || "Nenhuma descrição fornecida."}
               </div>
             </div>
+
             {st === statuses.RECUSADO && doc.reason && (
-              <div className="stack" style={{ marginTop: 12 }}>
-                <div style={{ fontWeight: 700, color: "var(--red)" }}>Motivo da recusa</div>
-                <div style={{ padding: 12, background: "rgba(255,0,0,0.05)", borderRadius: 8, border: "1px solid var(--red)" }}>{doc.reason}</div>
+              <div style={{ padding: "12px", background: "rgba(188,0,31,0.05)", borderRadius: "12px", border: "1px solid rgba(188,0,31,0.2)" }}>
+                <div style={{ fontWeight: 700, color: "var(--red)", fontSize: "0.75rem", textTransform: "uppercase", marginBottom: "6px" }}>Motivo da recusa</div>
+                <div style={{ fontSize: "0.9rem", color: "var(--red)", lineHeight: "1.4" }}>{doc.reason}</div>
               </div>
             )}
 
             {/* Ações de Peças: Encaminhar ou Rejeitar */}
             {canQueue && st === statuses.PENDENTE && (
-              <div className="stack" style={{ marginTop: 16, gap: 12 }}>
-                <div style={{ fontWeight: 700 }}>Ações do Setor Peças</div>
-                <div className="stack" style={{ gap: 8 }}>
-                  <label style={{ fontSize: "0.85rem", fontWeight: 600 }}>Encaminhar para setor responsável:</label>
+              <div className="stack" style={{ marginTop: 8, gap: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <div style={{ height: "1px", flex: 1, background: "var(--border)" }}></div>
+                  <span style={{ fontWeight: 700, fontSize: "0.7rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05rem" }}>Ações Peças</span>
+                  <div style={{ height: "1px", flex: 1, background: "var(--border)" }}></div>
+                </div>
+                <div className="stack" style={{ gap: 10 }}>
+                  <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--muted)" }}>Encaminhar para setor responsável:</label>
                   <select 
                     value={selectedSector} 
                     onChange={(e) => setSelectedSector(e.target.value)}
-                    style={{ padding: "8px", borderRadius: "8px", border: "1px solid var(--border)" }}
+                    style={{ padding: "10px", borderRadius: "10px", border: "1px solid var(--border)", fontSize: "0.9rem" }}
                   >
                     <option value="">Selecione um setor...</option>
                     {sectorOptions
@@ -289,48 +307,79 @@ export default function Evaluate() {
                         <option key={s.id} value={s.nome}>{s.nome}</option>
                       ))}
                   </select>
-                  <button className="btn success" disabled={loading || !selectedSector} onClick={forward}>Encaminhar pedido</button>
+                  <button className="btn success" style={{ height: "42px", fontWeight: 600, borderRadius: "10px" }} disabled={loading || !selectedSector} onClick={forward}>
+                    <SendIcon size={18} />
+                    Encaminhar pedido
+                  </button>
                 </div>
-                <div className="stack" style={{ gap: 8, marginTop: 8 }}>
-                  <label style={{ fontSize: "0.85rem", fontWeight: 600 }}>Ou recusar pedido (informe o motivo):</label>
-                  <textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Motivo da recusa" />
-                  <button className="btn danger" disabled={loading} onClick={reject}>Recusar pedido</button>
+                <div className="stack" style={{ gap: 10 }}>
+                  <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--muted)" }}>Ou recusar pedido (informe o motivo):</label>
+                  <textarea 
+                    rows={2} 
+                    value={reason} 
+                    onChange={(e) => setReason(e.target.value)} 
+                    placeholder="Motivo da recusa..."
+                    style={{ resize: "none", fontSize: "0.9rem", padding: "10px", borderRadius: "10px", border: "1px solid var(--border)", background: "var(--bg-alt, #f9f9f9)" }}
+                  />
+                  <button className="btn danger" style={{ height: "42px", fontWeight: 600, borderRadius: "10px" }} disabled={loading} onClick={reject}>
+                    <XIcon size={18} />
+                    Recusar pedido
+                  </button>
                 </div>
               </div>
             )}
 
             {/* Ações do Setor Responsável: Aprovar ou Rejeitar */}
             {isTarget && st === statuses.ENCAMINHADO && (
-              <div className="stack" style={{ marginTop: 16, gap: 12 }}>
-                <div style={{ fontWeight: 700 }}>Ações do seu Setor ({user?.sector})</div>
-                <div className="summary-actions">
-                  <button className="btn success" style={{ width: "100%" }} disabled={loading} onClick={approve}>Aprovar pedido</button>
+              <div className="stack" style={{ marginTop: 8, gap: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <div style={{ height: "1px", flex: 1, background: "var(--border)" }}></div>
+                  <span style={{ fontWeight: 700, fontSize: "0.7rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05rem" }}>Avaliação Setor</span>
+                  <div style={{ height: "1px", flex: 1, background: "var(--border)" }}></div>
                 </div>
-                <div className="stack" style={{ gap: 8, marginTop: 8 }}>
-                  <label style={{ fontSize: "0.85rem", fontWeight: 600 }}>Ou recusar pedido (informe o motivo):</label>
-                  <textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Motivo da recusa" />
-                  <button className="btn danger" disabled={loading} onClick={reject}>Recusar</button>
+                
+                <button className="btn success" style={{ width: "100%", height: "46px", borderRadius: "12px", fontWeight: 600 }} disabled={loading} onClick={approve}>
+                  <CheckIcon size={20} />
+                  Aprovar pedido
+                </button>
+
+                <div className="stack" style={{ gap: 10 }}>
+                  <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--muted)" }}>Ou recusar pedido (informe o motivo):</label>
+                  <textarea 
+                    rows={2} 
+                    value={reason} 
+                    onChange={(e) => setReason(e.target.value)} 
+                    placeholder="Motivo da recusa..."
+                    style={{ resize: "none", fontSize: "0.9rem", padding: "10px", borderRadius: "10px", border: "1px solid var(--border)", background: "var(--bg-alt, #f9f9f9)" }}
+                  />
+                  <button className="btn danger" style={{ height: "42px", fontWeight: 600, borderRadius: "10px" }} disabled={loading} onClick={reject}>
+                    <XIcon size={18} />
+                    Recusar
+                  </button>
                 </div>
               </div>
             )}
 
             {/* Ações de Peças: Atender ou Finalizar */}
             {canQueue && (st === statuses.APROVADO || st === statuses.RECUSADO || st === statuses.EM_ATENDIMENTO) && (
-              <div className="stack" style={{ marginTop: 16, gap: 12 }}>
-                <div style={{ fontWeight: 700, color: "var(--primary)" }}>Processamento de Peças</div>
+              <div className="stack" style={{ marginTop: 8, gap: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <div style={{ height: "1px", flex: 1, background: "var(--border)" }}></div>
+                  <span style={{ fontWeight: 700, fontSize: "0.7rem", color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.05rem" }}>Processamento</span>
+                  <div style={{ height: "1px", flex: 1, background: "var(--border)" }}></div>
+                </div>
                 
                 {st === statuses.APROVADO && (
                   <>
-                    <div className="helper" style={{ color: "var(--muted)", marginBottom: 8 }}>
-                      O setor responsável já <strong>aprovou</strong> este pedido. 
-                      Você pode iniciar o processo de compra ou finalizar o pedido.
+                    <div style={{ fontSize: "0.85rem", color: "var(--muted)", background: "rgba(11, 100, 244, 0.05)", padding: "10px", borderRadius: "10px", borderLeft: "4px solid var(--primary)" }}>
+                      O setor responsável já <strong>aprovou</strong> este pedido. Inicie a compra ou finalize.
                     </div>
-                    <div className="summary-actions" style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                      <button className="btn success" style={{ padding: "14px 20px" }} disabled={loading} onClick={assume}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                      <button className="btn success" style={{ height: "46px", borderRadius: "10px", fontWeight: 600, fontSize: "0.85rem" }} disabled={loading} onClick={assume}>
                         Iniciar Compra
                       </button>
-                      <button className="btn primary" style={{ padding: "14px 20px" }} disabled={loading} onClick={finalize}>
-                        Finalizar Pedido
+                      <button className="btn primary" style={{ height: "46px", borderRadius: "10px", fontWeight: 600, fontSize: "0.85rem" }} disabled={loading} onClick={finalize}>
+                        Finalizar
                       </button>
                     </div>
                   </>
@@ -338,30 +387,26 @@ export default function Evaluate() {
 
                 {st === statuses.EM_ATENDIMENTO && (
                   <>
-                    <div className="helper" style={{ color: "var(--muted)", marginBottom: 8 }}>
-                      Você está <strong>atendendo</strong> este pedido (Compra em andamento). 
-                      Clique abaixo para concluir o processo e notificar o autor.
+                    <div style={{ fontSize: "0.85rem", color: "var(--muted)", background: "rgba(11, 100, 244, 0.05)", padding: "10px", borderRadius: "10px", borderLeft: "4px solid var(--primary)" }}>
+                      Compra em andamento. Conclua o processo para notificar o autor.
                     </div>
-                    <div className="summary-actions">
-                      <button className="btn primary" style={{ width: "100%", padding: "14px" }} disabled={loading} onClick={finalize}>
-                        Finalizar Pedido
-                      </button>
-                    </div>
+                    <button className="btn primary" style={{ width: "100%", height: "46px", borderRadius: "10px", fontWeight: 600 }} disabled={loading} onClick={finalize}>
+                      Finalizar Pedido
+                    </button>
                   </>
                 )}
 
                 {st === statuses.RECUSADO && (
                   <>
-                    <div className="helper" style={{ color: "var(--muted)", marginBottom: 8 }}>
-                      O setor responsável <strong>recusou</strong> este pedido. 
-                      Você pode iniciar o processo de compra ou confirmar a recusa e finalizar o pedido.
+                    <div style={{ fontSize: "0.85rem", color: "var(--muted)", background: "rgba(188,0,31,0.05)", padding: "10px", borderRadius: "10px", borderLeft: "4px solid var(--red)" }}>
+                      O setor responsável <strong>recusou</strong> este pedido. Você ainda pode comprar ou confirmar a recusa.
                     </div>
-                    <div className="summary-actions" style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                      <button className="btn success" style={{ padding: "14px 20px" }} disabled={loading} onClick={assume}>
-                        Iniciar Compra
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                      <button className="btn success" style={{ height: "46px", borderRadius: "10px", fontWeight: 600, fontSize: "0.85rem" }} disabled={loading} onClick={assume}>
+                        Comprar
                       </button>
-                      <button className="btn primary" style={{ padding: "14px 20px" }} disabled={loading} onClick={finalize}>
-                        Confirmar Recusa e Finalizar
+                      <button className="btn primary" style={{ height: "46px", borderRadius: "10px", fontWeight: 600, fontSize: "0.85rem" }} disabled={loading} onClick={finalize}>
+                        Confirmar
                       </button>
                     </div>
                   </>
