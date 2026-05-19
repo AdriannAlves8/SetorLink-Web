@@ -1,19 +1,21 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
+import { PERMISSIONS } from "../utils/acl.js";
 import * as api from "../services/api.js";
 import { statuses, statusClass, statusLabel, normalizeStatus } from "../utils/constants.js";
 import { NavLink } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { ExportIcon } from "../components/Icons.jsx";
 import { showToast } from "../components/Toast.jsx";
+import Header from "../components/Header.jsx";
 
 export default function ReceivedNotas() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const [notas, setNotas] = useState([]);
   const [typeFilter, setTypeFilter] = useState("received"); // "received" ou "sent"
   const [loading, setLoading] = useState(false);
 
-  const canExport = user?.sector === "Peças";
+  const canExport = hasPermission(PERMISSIONS.EXPORT_EXCEL);
 
   const exportToExcel = async () => {
     try {
@@ -131,7 +133,7 @@ export default function ReceivedNotas() {
 
   useEffect(() => {
     if (user?.sector) load();
-  }, [user.sector, typeFilter]);
+  }, [user?.sector, typeFilter]);
 
   const openFile = (fileId) => {
     try {
@@ -144,27 +146,25 @@ export default function ReceivedNotas() {
 
   return (
     <>
-      <div className="content-header">
-        <div className="page-title">Notas Recebidas</div>
-        <div className="chip">{user.sector}</div>
-      </div>
+      <Header title="Notas Fiscais" user={user} />
 
-      {user?.sector === "Peças" && (
-        <div className="type-filter-group">
-          <button 
-            className={`type-btn ${typeFilter === "received" ? "active" : ""}`} 
-            onClick={() => setTypeFilter("received")}
-          >
-            Recebidas
-          </button>
+      <div className="page-shell">
+      <div className="type-filter-group">
+        <button 
+          className={`type-btn ${typeFilter === "received" ? "active" : ""}`} 
+          onClick={() => setTypeFilter("received")}
+        >
+          Notas Recebidas
+        </button>
+        {hasPermission(PERMISSIONS.VIEW_NOTA_SENT) && (
           <button 
             className={`type-btn ${typeFilter === "sent" ? "active" : ""}`} 
             onClick={() => setTypeFilter("sent")}
           >
-            Enviadas
+            Notas Enviadas
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {canExport && (
         <div className="actions" style={{ marginBottom: 8, justifyContent: "flex-end" }}>
@@ -228,6 +228,7 @@ export default function ReceivedNotas() {
             </tbody>
           </table>
         </div>
+      </div>
       </div>
     </>
   );

@@ -1,5 +1,6 @@
 import { Client, Databases, Storage, ID, Query, Account } from "appwrite";
-import { statuses, sectorEmails, normalizeStatus, statusLabel, isPecasSector } from "../utils/constants.js";
+import { statuses, sectorEmails, normalizeStatus, statusLabel, isPecasSector, sectors } from "../utils/constants.js";
+import { ROLES, ALL_ROLES, ROLE_PERMISSIONS, ROLE_INFO, hasPermission, PERMISSIONS, getEffectivePermissions, resolveRole, normalizeRoleSlug } from "../utils/acl.js";
 
 /* ================================
    CONFIGURAÇÕES
@@ -19,6 +20,7 @@ const {
   VITE_APPWRITE_COLLECTION_NOTAS_FISCAIS,
   VITE_APPWRITE_BUCKET_ID,
   VITE_APPWRITE_COLLECTION_CONVITES,
+  VITE_APPWRITE_COLLECTION_LOGS,
   VITE_CANONICAL_URL,
   VITE_FIREBASE_DL_DOMAIN,
   VITE_FIREBASE_DL_API_KEY
@@ -32,6 +34,11 @@ const DB_ID = VITE_APPWRITE_DATABASE_ID;
 const COL_PROPOSTAS = VITE_APPWRITE_COLLECTION_PROPOSTAS;
 const COL_NOTIFICACOES = VITE_APPWRITE_COLLECTION_NOTIFICACOES;
 const COL_USUARIOS = VITE_APPWRITE_COLLECTION_USUARIOS;
+const COL_LOGS = VITE_APPWRITE_COLLECTION_LOGS || "logs";
+const COL_SETORES = import.meta.env.VITE_APPWRITE_COLLECTION_SETORES || "setores";
+const COL_PERMISSOES = import.meta.env.VITE_APPWRITE_COLLECTION_PERMISSOES || "permissoes";
+const COL_ROLES = import.meta.env.VITE_APPWRITE_COLLECTION_ROLES || "roles";
+const COL_ROLE_PERMISSOES = import.meta.env.VITE_APPWRITE_COLLECTION_ROLE_PERMISSOES || "role_permissoes";
 const BUCKET_ID = VITE_APPWRITE_BUCKET_ID || null;
 const COL_CONVITES = VITE_APPWRITE_COLLECTION_CONVITES || null;
 
@@ -52,8 +59,14 @@ const account = new Account(client);
 ================================ */
 
 export const CHANNELS = {
-  PROPOSTAS: `databases.${VITE_APPWRITE_DATABASE_ID}.collections.${VITE_APPWRITE_COLLECTION_PROPOSTAS}.documents`,
-  NOTIFICACOES: `databases.${VITE_APPWRITE_DATABASE_ID}.collections.${VITE_APPWRITE_COLLECTION_NOTIFICACOES}.documents`,
+  PROPOSTAS: `databases.${DB_ID}.collections.${COL_PROPOSTAS}.documents`,
+  NOTIFICACOES: `databases.${DB_ID}.collections.${COL_NOTIFICACOES}.documents`,
+  LOGS: `databases.${DB_ID}.collections.${COL_LOGS}.documents`,
+  USUARIOS: `databases.${DB_ID}.collections.${COL_USUARIOS}.documents`,
+  SETORES: `databases.${DB_ID}.collections.${COL_SETORES}.documents`,
+  PERMISSOES: `databases.${DB_ID}.collections.${COL_PERMISSOES}.documents`,
+  ROLES: `databases.${DB_ID}.collections.${COL_ROLES}.documents`,
+  ROLE_PERMISSOES: `databases.${DB_ID}.collections.${COL_ROLE_PERMISSOES}.documents`,
 };
 
 export function subscribe(channels, callback) {
@@ -115,27 +128,21 @@ async function createEmailSessionWithSessionCap(email, password) {
 
 const genSafeId = () => Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 
-async function createAccountCompat({ email, password, name }) {
-  const safeId = genSafeId();
-  if (typeof account.create === "function") {
+async function createAccountCompat({ email, password, name, userId }) {
+  const safeId = userId || genSafeId();
+  
+  // No SDK v13 (versão atual do projeto), o account.create usa parâmetros posicionais.
+  // A assinatura é: create(userId, email, password, name)
+  try {
+    return await account.create(safeId, email, password, name || email);
+  } catch (err) {
+    // Se falhar, tenta o formato de objeto (SDK v14+)
     try {
-      // Tenta o formato de objeto (SDK v14+)
       return await account.create({ userId: safeId, email, password, name });
-    } catch (e1) {
-      try {
-        // Tenta o formato posicional com ID manual (Compatibilidade)
-        return await account.create(safeId, email, password, name);
-      } catch (e2) {
-        try {
-          // Tenta o formato posicional legado
-          return await account.create(email, password, name);
-        } catch (e3) {
-          throw e1; // Se tudo falhar, joga o primeiro erro (geralmente o mais relevante)
-        }
-      }
+    } catch (err2) {
+      throw err; // Lança o erro original se ambos falharem
     }
   }
-  throw new Error("Criação de conta não suportada pela versão do SDK");
 }
 
 async function createVerificationCompat(redirect) {
@@ -182,25 +189,61 @@ async function updateRecoveryCompat(userId, secret, password, confirmPassword) {
   throw new Error("Atualização de recuperação não suportada");
 }
 
+async function findUsuarioByEmail(email) {
+  const e = String(email || "").trim().toLowerCase();
+  if (!e) return null;
+  try {
+    const list = await databases.listDocuments(DB_ID, COL_USUARIOS, [
+      Query.equal("email", e),
+      Query.limit(1)
+    ]);
+    return list.total > 0 ? list.documents[0] : null;
+  } catch {
+    return null;
+  }
+}
+
+async function linkUsuarioToAuth(doc, authUserId, email = "") {
+  if (!doc || !authUserId) return doc;
+  const patch = {};
+  if (doc.uid !== authUserId) patch.uid = authUserId;
+  if (email && doc.email !== email) patch.email = email;
+  if (!Object.keys(patch).length) return doc;
+  try {
+    return await databases.updateDocument(DB_ID, COL_USUARIOS, doc.$id, patch);
+  } catch (err) {
+    console.warn("linkUsuarioToAuth:", err);
+    return doc;
+  }
+}
+
 async function getOrCreateUserExtras(userId, email = "") {
   try {
-    // Primeiro tenta pelo ID do documento (caso sejam iguais)
     return await databases.getDocument(DB_ID, COL_USUARIOS, userId);
   } catch {
     try {
-      // Se falhar, busca na coleção onde o campo 'uid' seja igual ao ID do Auth
-      const list = await databases.listDocuments(DB_ID, COL_USUARIOS, [
+      const byUid = await databases.listDocuments(DB_ID, COL_USUARIOS, [
         Query.equal("uid", userId),
         Query.limit(1)
       ]);
-      if (list.total > 0) return list.documents[0];
+      if (byUid.total > 0) {
+        return await linkUsuarioToAuth(byUid.documents[0], userId, email);
+      }
 
-      // Se não encontrar nada, cria um novo usando o userId como ID do documento
+      const byEmail = await findUsuarioByEmail(email);
+      if (byEmail) {
+        return await linkUsuarioToAuth(byEmail, userId, email);
+      }
+
+      const setor = sectorFromEmail(email) || "—";
       return await databases.createDocument(DB_ID, COL_USUARIOS, userId, {
         uid: userId,
         email: email || "",
-        setor: "",
-        nome: "",
+        nome: email ? email.split("@")[0] : "Usuário",
+        setor,
+        role_id: ROLES.OPERADOR,
+        setor_id: null,
+        ativo: true,
         isAdmin: false
       });
     } catch (err) {
@@ -210,24 +253,86 @@ async function getOrCreateUserExtras(userId, email = "") {
   }
 }
 
+/**
+ * Helper para validar permissões no backend (simulado via SDK).
+ * Deve ser chamado no início de cada função sensível.
+ */
+async function assertPermission(permission) {
+  const user = await getUser();
+  if (!user) throw new Error("Não autenticado");
+  
+  // Fallback para o administrador mestre (redundância se o banco falhar ou não estiver configurado)
+  if (user.email === "adriannalvesdev@gmail.com") return user;
+
+  const hasPerm = hasPermission(user, permission);
+  if (!hasPerm) {
+    throw new Error(`Permissão negada: ${permission}`);
+  }
+  return user;
+}
+
 export async function getUser() {
   const acc = await getAccount();
   if (!acc) return null;
   const extras = await getOrCreateUserExtras(acc.$id, acc.email);
-  const avatarRef = extras?.avatar || extras?.fotoStoragePath || extras?.caminhoDeArmazenamentoDeFotos || null;
+  
+  if (extras?.deleted_at || extras?.isDeleted || extras?.ativo === false || extras?.status === "Inativo") {
+    try { await account.deleteSession("current"); } catch {}
+    return null;
+  }
+
+  const avatarRef = extras?.avatar || extras?.fotoStoragePath || null;
   let avatarUrl = null;
   if (avatarRef) {
     const s = String(avatarRef || "");
     avatarUrl = /^https?:\/\//i.test(s) ? s : (BUCKET_ID ? storage.getFileView(BUCKET_ID, s).href : s);
   }
-  const sectorByEmail = sectorFromEmail(acc.email);
+
+  // Busca as permissões dinâmicas da Role (Única fonte de verdade)
+  let permissions = [];
+
+  if (extras?.role_id) {
+    try {
+      const rolePerms = await databases.listDocuments(DB_ID, COL_ROLE_PERMISSOES, [
+        Query.equal("role_id", extras.role_id),
+        Query.equal("permitido", true),
+        Query.limit(100)
+      ]);
+      
+      if (rolePerms.total > 0) {
+        const permIds = rolePerms.documents.map(rp => rp.permissao_id);
+        const perms = await databases.listDocuments(DB_ID, COL_PERMISSOES, [
+          Query.equal("$id", permIds),
+          Query.equal("ativo", true)
+        ]);
+        permissions = perms.documents.map(p => p.chave);
+      }
+    } catch (err) {
+      console.warn("Erro ao carregar permissões dinâmicas:", err);
+    }
+  }
+
+  const roleSlug = normalizeRoleSlug({
+    role_id: extras?.role_id,
+    role: extras?.role
+  });
+  const effectivePermissions = getEffectivePermissions({ role: roleSlug, role_id: roleSlug });
+
   return {
     uid: acc.$id,
+    id: acc.$id, // Alias para consistência
     email: acc.email || extras?.email || "",
-    sector: extras?.setor || sectorByEmail || "",
-    name: extras?.nome || acc.name || "",
-    empresa: extras?.empresa || "",
-    avatar: avatarUrl
+    sector: extras?.setor || extras?.sector || "",
+    setor_id: extras?.setor_id || null,
+    name: extras?.nome || extras?.name || acc.name || "",
+    avatar: avatarUrl,
+    role: roleSlug,
+    role_id: roleSlug,
+    permissions: effectivePermissions,
+    isActive: extras?.ativo ?? (extras?.status !== "Inativo"),
+    isAdmin: roleSlug === ROLES.SUPORTE,
+    setor: extras?.setor || extras?.sector || "",
+    senhaTemporaria: extras?.senhaTemporaria || ""
   };
 }
 
@@ -302,7 +407,12 @@ export async function login(sector, password) {
         setor: sector,
         nome: extras?.nome || sector,
         email: acc.email || extras?.email || "",
-        isAdmin: sector === "RH"
+        isAdmin: sector === "RH",
+        ultimoAcesso: new Date().toISOString()
+      });
+    } else {
+      await databases.updateDocument(DB_ID, COL_USUARIOS, extras?.$id || acc.$id, {
+        ultimoAcesso: new Date().toISOString()
       });
     }
   } catch {}
@@ -330,28 +440,73 @@ export async function updateEmailVerification(userId, secret) {
 }
 
 export async function loginByEmail(email, password) {
-  await createEmailSessionWithSessionCap(email, password);
+  try {
+    // Tenta o login normal primeiro
+    await createEmailSessionWithSessionCap(email, password);
+  } catch (err) {
+    // Se falhar, verifica se é um usuário preparado pelo SUPORTE que ainda não foi "ativado" no Auth
+    const list = await databases.listDocuments(DB_ID, COL_USUARIOS, [
+      Query.equal("email", email),
+      Query.limit(1)
+    ]);
+
+    const dbUser = list.documents[0];
+    if (dbUser && dbUser.senhaTemporaria === password) {
+      // Usuário existe no banco e a senha confere! Vamos criar a conta de Auth agora.
+      try {
+        await createAccountCompat({ 
+          email: dbUser.email, 
+          password: password, 
+          name: dbUser.nome,
+          userId: dbUser.$id || dbUser.uid
+        });
+        // Agora que a conta de Auth existe, tenta logar novamente
+        await createEmailSessionWithSessionCap(email, password);
+      } catch (createErr) {
+        throw new Error("Falha ao ativar conta. Entre em contato com o Suporte.");
+      }
+    } else {
+      // Se não for um usuário preparado ou a senha estiver errada, joga o erro original
+      throw err;
+    }
+  }
+
   const acc = await getAccount();
   if (!acc) throw new Error("Falha ao obter usuário");
   const domain = String(acc.email || "").split("@")[1] || "";
   const isSynthetic = domain === "setorlink.local";
+  
   if (!isSynthetic && acc.emailVerification === false) {
     try { await account.deleteSession("current"); } catch {}
     throw new Error("EMAIL_NAO_VERIFICADO");
   }
-  // Garante doc de usuário e que email esteja gravado
+
+  // Sincroniza dados do banco e garante que o UID do Auth seja gravado no documento
   try {
     const extras = await getOrCreateUserExtras(acc.$id, acc.email);
     const sec = sectorFromEmail(acc.email);
-    const payload = {};
+    const payload = { uid: acc.$id };
+
     if (!extras?.email || extras.email !== acc.email) payload.email = acc.email;
     if (sec && extras?.setor !== sec) payload.setor = sec;
-    if (sec && !extras?.nome) payload.nome = sec;
-    if (sec === "RH") payload.isAdmin = true;
-    if (Object.keys(payload).length > 0) {
-      await databases.updateDocument(DB_ID, COL_USUARIOS, extras?.$id || acc.$id, payload);
+
+    if (acc.email === "adriannalvesdev@gmail.com") {
+      payload.isAdmin = true;
+      payload.role_id = ROLES.SUPORTE;
     }
-  } catch {}
+
+    const currentSlug = normalizeRoleSlug(extras);
+    if (currentSlug && extras?.role_id !== currentSlug) {
+      payload.role_id = currentSlug;
+    }
+
+    payload.ultimoAcesso = new Date().toISOString();
+
+    await databases.updateDocument(DB_ID, COL_USUARIOS, extras?.$id || acc.$id, payload);
+  } catch (err) {
+    console.warn("Erro na sincronização pós-login:", err);
+  }
+
   return await getUser();
 }
 
@@ -375,10 +530,9 @@ function optValor(v) {
 export async function createNotification({ titulo, mensagem, destinatarioSetor, propostaId, tipo }) {
   const now = new Date().toISOString();
   try {
-    // Busca se já existe uma notificação para ESTA proposta e para ESTE destinatário.
-    // Assim, cada envolvido tem sua própria linha que se atualiza.
+    // No seu banco o atributo está como "propostald" (com L minúsculo no lugar do i)
     const existing = await databases.listDocuments(DB_ID, COL_NOTIFICACOES, [
-      Query.equal("propostaId", propostaId),
+      Query.equal("propostald", propostaId),
       Query.equal("destinatarioSetor", destinatarioSetor),
       Query.limit(1)
     ]);
@@ -397,7 +551,7 @@ export async function createNotification({ titulo, mensagem, destinatarioSetor, 
         titulo,
         mensagem,
         destinatarioSetor,
-        propostaId,
+        propostald: propostaId,
         tipo,
         data: now,
         lida: false
@@ -422,6 +576,7 @@ export async function sendDocument({
   recorrente = false,
   valor
 }) {
+  await assertPermission(PERMISSIONS.CREATE_ORDER);
   const now = new Date().toISOString();
   let pdfUri = null;
 
@@ -472,6 +627,14 @@ export async function sendDocument({
     });
   }
 
+  await logWorkflowForSectors({
+    acao: "ORDER_SENT",
+    entidade: "propostas",
+    entidade_id: doc.$id,
+    detalhes: `Pedido "${title}" enviado por ${senderSector} para Peças`,
+    setores: [senderSector, "Peças"]
+  });
+
   return [mapDoc(doc)];
 }
 
@@ -483,6 +646,7 @@ export async function sendNotaFiscal({
   file,
   senderSector
 }) {
+  await assertPermission(PERMISSIONS.CREATE_NOTA);
   const now = new Date().toISOString();
   let pdfUri = null;
 
@@ -519,11 +683,20 @@ export async function sendNotaFiscal({
     tipo: "NOTA_FISCAL"
   });
 
+  await logWorkflowForSectors({
+    acao: "NOTA_SENT",
+    entidade: "propostas",
+    entidade_id: doc.$id,
+    detalhes: `Nota "${title}" enviada de ${senderSector} para ${targetSector}`,
+    setores: [senderSector, targetSector, "Peças"]
+  });
+
   return doc;
 }
 
 /** Aprovar Nota Fiscal */
 export async function approveNota(id) {
+  await assertPermission(PERMISSIONS.APPROVE_NOTA);
   const { sector } = await assertActor();
   const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
 
@@ -543,10 +716,19 @@ export async function approveNota(id) {
     tipo: statuses.FINALIZADO
   });
 
+  await logWorkflowForSectors({
+    acao: "NOTA_APPROVED",
+    entidade: "propostas",
+    entidade_id: id,
+    detalhes: `Nota aprovada por ${sector}: ${current.titulo.replace("[NOTA FISCAL] ", "")}`,
+    setores: [sector, current.authorSetor || current.setor, "Peças"]
+  });
+
   return mapDoc(update);
 }
 
 export async function rejectNota(id, reason) {
+  await assertPermission(PERMISSIONS.APPROVE_NOTA);
   const { sector } = await assertActor();
   const r = String(reason || "").trim();
   if (!r) throw new Error("Informe o motivo da rejeição");
@@ -568,6 +750,14 @@ export async function rejectNota(id, reason) {
     destinatarioSetor: "Peças",
     propostaId: id,
     tipo: statuses.RECUSADO
+  });
+
+  await logWorkflowForSectors({
+    acao: "NOTA_REJECTED",
+    entidade: "propostas",
+    entidade_id: id,
+    detalhes: `Nota recusada por ${sector}. Motivo: ${r}`,
+    setores: [sector, current.authorSetor || current.setor, "Peças"]
   });
 
   return mapDoc(update);
@@ -632,8 +822,25 @@ export async function getPecasQueue({ page = 1, pageSize = 10, allStatuses = tru
  * - Filtra para NÃO mostrar Notas Fiscais, apenas PEDIDOS
  */
 export async function getReceived(sector, { page = 1, pageSize = 10, allStatuses = true } = {}) {
-  if (isPecasSector(sector)) return getPecasQueue({ page, pageSize, allStatuses });
+  const user = await getUser();
+  if (!user) throw new Error("Não autenticado");
 
+  const canAttend =
+    hasPermission(user, PERMISSIONS.VIEW_ATTEND_QUEUE) ||
+    hasPermission(user, PERMISSIONS.VIEW_RECEIVED);
+  if (!canAttend) {
+    throw new Error("Permissão negada: orders.view_attend_queue");
+  }
+
+  // Fila central do setor Peças (todos os pedidos)
+  if (
+    isPecasSector(sector) &&
+    (hasPermission(user, PERMISSIONS.VIEW_RECEIVED) || hasPermission(user, PERMISSIONS.VIEW_ATTEND_QUEUE))
+  ) {
+    return getPecasQueue({ page, pageSize, allStatuses });
+  }
+
+  // Demais setores: pedidos encaminhados por Peças para este setor
   const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
     Query.equal("setorDestino", sector),
     Query.limit(2000)
@@ -702,8 +909,7 @@ async function assertActor() {
 
 /** Peças encaminha para outro setor */
 export async function forwardOrder(id, targetSector) {
-  const { sector } = await assertActor();
-  if (!isPecasSector(sector)) throw new Error("Ação permitida apenas para o setor Peças");
+  await assertPermission(PERMISSIONS.VIEW_RECEIVED);
 
   const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
   const st = normalizeStatus(current.status);
@@ -733,11 +939,20 @@ export async function forwardOrder(id, targetSector) {
     tipo: statuses.ENCAMINHADO
   });
 
+  await logWorkflowForSectors({
+    acao: "ORDER_FORWARDED",
+    entidade: "propostas",
+    entidade_id: id,
+    detalhes: `Peças encaminhou "${current.titulo}" para ${targetSector}`,
+    setores: ["Peças", targetSector, current.authorSetor || current.setor]
+  });
+
   return mapDoc(update);
 }
 
 /** Setor responsável aprova o pedido */
 export async function approveBySector(id) {
+  await assertPermission(PERMISSIONS.EVALUATE_ORDER);
   const { sector } = await assertActor();
   const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
 
@@ -771,11 +986,20 @@ export async function approveBySector(id) {
     tipo: statuses.APROVADO
   });
 
+  await logWorkflowForSectors({
+    acao: "ORDER_APPROVED",
+    entidade: "propostas",
+    entidade_id: id,
+    detalhes: `${sector} aprovou "${current.titulo}" — retorno para Peças`,
+    setores: [sector, "Peças", current.authorSetor || current.setor]
+  });
+
   return mapDoc(update);
 }
 
 /** Peças ou Setor responsável rejeitam o pedido */
 export async function rejectOrder(id, reason) {
+  await assertPermission(PERMISSIONS.EVALUATE_ORDER);
   const { sector } = await assertActor();
   const r = String(reason || "").trim();
   if (!r) throw new Error("Informe o motivo da rejeição");
@@ -787,11 +1011,11 @@ export async function rejectOrder(id, reason) {
     throw new Error("Este pedido não pode ser recusado neste estado");
   }
 
-  // Verifica se quem está rejeitando tem permissão
-  const isPecas = isPecasSector(sector);
+  const actor = await getUser();
+  const canManageQueue = hasPermission(actor, PERMISSIONS.VIEW_RECEIVED);
   const isTarget = eq(current.setorDestino, sector);
 
-  if (!isPecas && !isTarget) {
+  if (!canManageQueue && !isTarget) {
     throw new Error("Você não tem permissão para rejeitar este pedido");
   }
 
@@ -800,8 +1024,7 @@ export async function rejectOrder(id, reason) {
     motivoRecusa: r
   };
 
-  // Se for o setor quem rejeitou, o pedido volta para Peças
-  if (!isPecas) {
+  if (!canManageQueue) {
     patch.setorDestino = "Peças";
   }
 
@@ -816,8 +1039,7 @@ export async function rejectOrder(id, reason) {
     tipo: statuses.RECUSADO
   });
 
-  // Se foi o setor quem rejeitou, avisa Peças também
-  if (!isPecas) {
+  if (!canManageQueue) {
     await createNotification({
       titulo: `Pedido rejeitado por ${sector}`,
       mensagem: current.titulo,
@@ -827,13 +1049,25 @@ export async function rejectOrder(id, reason) {
     });
   }
 
+  const rejectSetores = canManageQueue
+    ? ["Peças", current.authorSetor || current.setor]
+    : [sector, "Peças", current.authorSetor || current.setor];
+
+  await logWorkflowForSectors({
+    acao: "ORDER_REJECTED",
+    entidade: "propostas",
+    entidade_id: id,
+    detalhes: `Pedido recusado${canManageQueue ? " por Peças" : ` por ${sector}`}. Motivo: ${r}`,
+    setores: rejectSetores
+  });
+
   return mapDoc(update);
 }
 
 /** Peças finaliza a compra */
 export async function finalizeOrder(id) {
-  const { acc, sector } = await assertActor();
-  if (!isPecasSector(sector)) throw new Error("Ação permitida apenas para o setor Peças");
+  await assertPermission(PERMISSIONS.VIEW_RECEIVED);
+  const { acc } = await assertActor();
 
   const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
   const st = normalizeStatus(current.status);
@@ -860,13 +1094,21 @@ export async function finalizeOrder(id) {
     tipo: statuses.FINALIZADO
   });
 
+  await logWorkflowForSectors({
+    acao: "ORDER_FINALIZED",
+    entidade: "propostas",
+    entidade_id: id,
+    detalhes: `Peças finalizou "${current.titulo}"`,
+    setores: ["Peças", current.authorSetor || current.setor, current.setorDestino].filter(Boolean)
+  });
+
   return mapDoc(update);
 }
 
 /** PENDENTE ou APROVADO → EM_ATENDIMENTO. */
 export async function assumeOrder(id) {
-  const { acc, sector } = await assertActor();
-  if (!isPecasSector(sector)) throw new Error("Ação permitida apenas para o setor Peças");
+  await assertPermission(PERMISSIONS.ATTEND_ORDER);
+  const { acc } = await assertActor();
 
   const current = await databases.getDocument(DB_ID, COL_PROPOSTAS, id);
   const st = normalizeStatus(current.status);
@@ -889,6 +1131,14 @@ export async function assumeOrder(id) {
     destinatarioSetor: current.authorSetor || current.setor,
     propostaId: id,
     tipo: statuses.EM_ATENDIMENTO
+  });
+
+  await logWorkflowForSectors({
+    acao: "ORDER_ASSUMED",
+    entidade: "propostas",
+    entidade_id: id,
+    detalhes: `Peças assumiu atendimento de "${current.titulo}"`,
+    setores: ["Peças", current.authorSetor || current.setor]
   });
 
   return mapDoc(update);
@@ -940,6 +1190,556 @@ export async function getDocumentById(id) {
 }
 
 /* ================================
+   ADMIN / SUPORTE
+================================ */
+
+export async function adminListUsers() {
+  await assertPermission(PERMISSIONS.MANAGE_USERS);
+  const res = await databases.listDocuments(DB_ID, COL_USUARIOS, [
+    Query.limit(100),
+    Query.orderDesc("$createdAt")
+  ]);
+  return res.documents.map(d => ({
+    id: d.$id,
+    uid: d.uid,
+    email: d.email,
+    name: d.nome,
+    nome: d.nome, // redundância para compatibilidade
+    role_id: d.role_id || null,
+    setor_id: d.setor_id || null,
+    setor: d.setor || d.sector || "",
+    sector: d.setor || d.sector || "", // redundância
+    ativo: d.ativo ?? true,
+    deleted_at: d.deleted_at || null
+  }));
+}
+
+export async function adminUpdateUser(docId, payload) {
+  await assertPermission(PERMISSIONS.MANAGE_USERS);
+  
+  const me = await getUser();
+  if (me.uid === payload.uid && payload.role_id && payload.role_id !== ROLES.SUPORTE) {
+    throw new Error("Você não pode remover seu próprio acesso administrativo");
+  }
+
+  // Prepara os dados garantindo que campos obrigatórios não sejam undefined
+  const roleSlug = normalizeRoleSlug(payload.role_id || payload.role);
+  const data = {
+    nome: payload.name || payload.nome || "",
+    email: payload.email || "", 
+    setor: payload.sector || payload.setor || "", 
+    ativo: payload.ativo ?? true,
+    isAdmin: roleSlug === ROLES.SUPORTE || payload.isAdmin === true,
+    role_id: roleSlug
+  };
+
+  // Adiciona campos dinâmicos apenas se existirem valores
+  if (payload.setor_id) data.setor_id = payload.setor_id;
+
+  if (payload.password) {
+    data.senhaTemporaria = payload.password;
+  }
+
+  const res = await databases.updateDocument(DB_ID, COL_USUARIOS, docId, data);
+
+  await createLog({
+    acao: "UPDATE_USER",
+    entidade: "usuarios",
+    entidade_id: docId,
+    detalhes: `Usuário ${payload.name || payload.uid} atualizado`
+  });
+  return res;
+}
+
+export async function adminCreateUser(payload) {
+  await assertPermission(PERMISSIONS.MANAGE_USERS);
+  
+  const newId = ID.unique();
+  
+  try {
+    await createAccountCompat({
+      email: payload.email,
+      password: payload.password,
+      name: payload.name,
+      userId: newId
+    });
+  } catch (err) {
+    if (err.code === 409) {
+      throw new Error("Este e-mail já está cadastrado no sistema (Auth).");
+    }
+    throw err;
+  }
+  
+  const roleSlug = normalizeRoleSlug(payload.role_id || payload.role);
+  const sector = String(payload.sector || payload.setor || "").trim();
+  if (!sector) {
+    throw new Error("Selecione o setor do usuário.");
+  }
+
+  const data = {
+    uid: newId, 
+    email: payload.email,
+    nome: payload.name || payload.nome || "",
+    setor: sector,
+    ativo: true,
+    isAdmin: roleSlug === ROLES.SUPORTE,
+    senhaTemporaria: payload.password,
+    role_id: roleSlug,
+    setor_id: payload.setor_id || null
+  };
+
+  const res = await databases.createDocument(DB_ID, COL_USUARIOS, newId, data);
+
+  await createLog({
+    acao: "CREATE_USER",
+    entidade: "usuarios",
+    entidade_id: newId,
+    detalhes: `Usuário ${payload.name} (${payload.email}) criado`
+  });
+  return res;
+}
+
+export async function adminDeleteUser(docId, uid) {
+  await assertPermission(PERMISSIONS.MANAGE_USERS);
+  
+  const me = await getUser();
+  if (me.uid === uid) {
+    throw new Error("Você não pode excluir sua própria conta administrativa");
+  }
+
+  await databases.updateDocument(DB_ID, COL_USUARIOS, docId, {
+    ativo: false,
+    deleted_at: new Date().toISOString()
+  });
+
+  await createLog({
+    acao: "DELETE_USER",
+    entidade: "usuarios",
+    entidade_id: docId,
+    detalhes: `Usuário ID ${uid} desativado`
+  });
+  return true;
+}
+
+const LOG_ACTION_LABELS = {
+  CREATE_USER: "Usuário criado",
+  UPDATE_USER: "Usuário atualizado",
+  DELETE_USER: "Usuário desativado",
+  CREATE_SECTOR: "Setor criado",
+  UPDATE_SECTOR: "Setor atualizado",
+  DELETE_SECTOR: "Setor desativado",
+  SYNC_ROLE_DEFAULTS: "Perfis sincronizados",
+  UPDATE_ROLE_PERMISSIONS: "Permissões atualizadas",
+  CLEAR_LOGS: "Histórico limpo",
+  ORDER_SENT: "Pedido enviado",
+  ORDER_FORWARDED: "Pedido encaminhado",
+  ORDER_APPROVED: "Pedido aprovado",
+  ORDER_REJECTED: "Pedido recusado",
+  ORDER_FINALIZED: "Pedido finalizado",
+  ORDER_ASSUMED: "Pedido em atendimento",
+  NOTA_SENT: "Nota fiscal enviada",
+  NOTA_APPROVED: "Nota fiscal aprovada",
+  NOTA_REJECTED: "Nota fiscal recusada"
+};
+
+function logTimestamp(doc) {
+  const raw = doc.created_at || doc.$createdAt;
+  if (!raw) return "—";
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? String(raw) : d.toLocaleString("pt-BR");
+}
+
+async function buildUserNameMap() {
+  const map = {};
+  try {
+    const res = await databases.listDocuments(DB_ID, COL_USUARIOS, [Query.limit(5000)]);
+    for (const u of res.documents) {
+      const label = u.nome || u.name || u.email || u.uid;
+      if (u.uid) map[u.uid] = label;
+      if (u.$id) map[u.$id] = label;
+    }
+  } catch (err) {
+    console.warn("buildUserNameMap:", err);
+  }
+  return map;
+}
+
+function mapLogDocument(d, userMap = {}) {
+  const uid = d.usuario_id || d.usuarioId || "";
+  return {
+    id: d.$id,
+    action: d.acao,
+    actionLabel: LOG_ACTION_LABELS[d.acao] || d.acao || "—",
+    details: d.detalhes || "—",
+    entity: d.entidade || "",
+    entityId: d.entidade_id || "",
+    sector: d.setor || "",
+    userId: uid,
+    user: userMap[uid] || uid || "Sistema",
+    time: logTimestamp(d)
+  };
+}
+
+async function fetchLogDocuments(limit = 100) {
+  if (!COL_LOGS) return [];
+
+  const tryList = async (queries) => {
+    const res = await databases.listDocuments(DB_ID, COL_LOGS, queries);
+    return res.documents;
+  };
+
+  try {
+    return await tryList([Query.limit(limit), Query.orderDesc("created_at")]);
+  } catch {
+    try {
+      return await tryList([Query.limit(limit), Query.orderDesc("$createdAt")]);
+    } catch {
+      const docs = await tryList([Query.limit(limit)]);
+      return docs.sort((a, b) => {
+        const ta = new Date(a.created_at || a.$createdAt || 0).getTime();
+        const tb = new Date(b.created_at || b.$createdAt || 0).getTime();
+        return tb - ta;
+      });
+    }
+  }
+}
+
+export async function createLog({ acao, entidade, entidade_id, detalhes, setor }) {
+  if (!COL_LOGS) return;
+  const me = await getUser();
+  if (!me) return;
+
+  const payload = {
+    usuario_id: me.uid,
+    acao: String(acao || "").trim(),
+    entidade: entidade || "",
+    entidade_id: String(entidade_id || ""),
+    detalhes: detalhes || "",
+    created_at: new Date().toISOString()
+  };
+
+  if (setor) payload.setor = String(setor).trim();
+
+  try {
+    await databases.createDocument(DB_ID, COL_LOGS, ID.unique(), payload);
+  } catch (err) {
+    try {
+      const { created_at, setor: _s, ...fallback } = payload;
+      await databases.createDocument(DB_ID, COL_LOGS, ID.unique(), fallback);
+    } catch (err2) {
+      console.warn("Falha ao gravar log de auditoria:", err2.message || err.message);
+    }
+  }
+}
+
+/** Registra o mesmo evento no histórico de cada setor participante */
+export async function logWorkflowForSectors({ acao, entidade, entidade_id, detalhes, setores }) {
+  if (!COL_LOGS) return;
+  const me = await getUser();
+  if (!me) return;
+
+  const unique = [
+    ...new Set(
+      (setores || [])
+        .map((s) => String(s || "").trim())
+        .filter(Boolean)
+    )
+  ];
+
+  if (!unique.length) {
+    unique.push(me.sector || me.setor || "");
+  }
+
+  await Promise.all(
+    unique.map((setor) =>
+      createLog({ acao, entidade, entidade_id, detalhes, setor })
+    )
+  );
+}
+
+export async function getAdminStats() {
+  await assertPermission(PERMISSIONS.ADMIN_DASHBOARD);
+  
+  const [users, orders, sectorsRes] = await Promise.all([
+    databases.listDocuments(DB_ID, COL_USUARIOS, [Query.limit(5000)]),
+    databases.listDocuments(DB_ID, COL_PROPOSTAS, [Query.limit(1)]),
+    adminListSectors()
+  ]);
+  
+  // Define "online" como usuários que acessaram o sistema nos últimos 5 minutos
+  const cincoMinutosAtras = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  
+  const activeUsersCount = users.documents.filter(u => {
+    const ultimoAcesso = u.ultimoAcesso || u.lastLogin;
+    return ultimoAcesso && ultimoAcesso >= cincoMinutosAtras;
+  }).length;
+
+  return {
+    totalUsers: users.total,
+    totalOrders: orders.total,
+    activeUsers: activeUsersCount,
+    sectorsCount: sectorsRes.length
+  };
+}
+
+export async function listAuditLogs({ limit = 100 } = {}) {
+  await assertPermission(PERMISSIONS.VIEW_LOGS);
+  if (!COL_LOGS) return [];
+
+  const docs = await fetchLogDocuments(limit);
+  const userMap = await buildUserNameMap();
+  return docs.map((d) => mapLogDocument(d, userMap));
+}
+
+export async function getRecentAuditLogs(limit = 10) {
+  await assertPermission(PERMISSIONS.ADMIN_DASHBOARD);
+  const all = await listAuditLogs({ limit });
+  return all.slice(0, limit);
+}
+
+export async function adminClearAuditLogs() {
+  await assertPermission(PERMISSIONS.VIEW_LOGS);
+  if (!COL_LOGS) return true;
+
+  let deleted = 0;
+  try {
+    for (;;) {
+      const res = await databases.listDocuments(DB_ID, COL_LOGS, [Query.limit(100)]);
+      if (!res.documents.length) break;
+      await Promise.all(
+        res.documents.map((d) => databases.deleteDocument(DB_ID, COL_LOGS, d.$id))
+      );
+      deleted += res.documents.length;
+      if (res.documents.length < 100) break;
+    }
+
+    await createLog({
+      acao: "CLEAR_LOGS",
+      entidade: "logs",
+      entidade_id: "all",
+      detalhes: `Histórico limpo (${deleted} registros removidos)`
+    });
+    return true;
+  } catch (err) {
+    console.error("Erro ao limpar logs:", err);
+    throw err;
+  }
+}
+
+/* ================================
+   SETORES
+================================ */
+
+export async function adminListSectors({ includeInactive = false } = {}) {
+  try {
+    const queries = [Query.limit(100)];
+    if (!includeInactive) {
+      queries.unshift(Query.equal("ativo", true));
+    }
+    const res = await databases.listDocuments(DB_ID, COL_SETORES, queries);
+    return res.documents
+      .map((d) => ({
+        id: d.$id,
+        nome: d.nome,
+        email: d.email || "",
+        ativo: d.ativo !== false
+      }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  } catch (err) {
+    if (err?.code !== 401) {
+      console.warn("Erro ao listar setores:", err);
+    }
+    return [];
+  }
+}
+
+/** Setores ativos para encaminhamento (Peças e demais operadores autenticados) */
+export async function listSectorsForForward() {
+  const user = await getUser();
+  if (!user) throw new Error("Não autenticado");
+  return adminListSectors({ includeInactive: false });
+}
+
+export async function adminCreateSector(payload) {
+  await assertPermission(PERMISSIONS.MANAGE_SECTORS);
+  const me = await getUser();
+  
+  if (!payload.email) {
+    throw new Error("O campo e-mail é obrigatório para notificações do setor.");
+  }
+
+  const res = await databases.createDocument(DB_ID, COL_SETORES, ID.unique(), {
+    nome: payload.nome,
+    email: payload.email, // Obrigatório no seu banco
+    ativo: true
+  });
+
+  await createLog({
+    acao: "CREATE_SECTOR",
+    entidade: "setores",
+    entidade_id: res.$id,
+    detalhes: `Setor ${payload.nome} criado com e-mail ${payload.email || 'N/A'}`
+  });
+
+  return res;
+}
+
+export async function adminUpdateSector(id, payload) {
+  await assertPermission(PERMISSIONS.MANAGE_SECTORS);
+  
+  const res = await databases.updateDocument(DB_ID, COL_SETORES, id, {
+    nome: payload.nome,
+    email: payload.email || "", // Novo campo de e-mail de notificação
+    ativo: payload.ativo
+  });
+
+  await createLog({
+    acao: "UPDATE_SECTOR",
+    entidade: "setores",
+    entidade_id: id,
+    detalhes: `Setor ${payload.nome} atualizado`
+  });
+
+  return res;
+}
+
+export async function adminDeleteSector(id, nome) {
+  await assertPermission(PERMISSIONS.MANAGE_SECTORS);
+  
+  await databases.updateDocument(DB_ID, COL_SETORES, id, {
+    ativo: false,
+    deleted_at: new Date().toISOString()
+  });
+
+  await createLog({
+    acao: "DELETE_SECTOR",
+    entidade: "setores",
+    entidade_id: id,
+    detalhes: `Setor ${nome} desativado`
+  });
+  return true;
+}
+
+/* ================================
+   ROLES E PERMISSÕES
+================================ */
+
+export async function adminListRoles() {
+  await assertPermission(PERMISSIONS.MANAGE_PERMISSIONS);
+  try {
+    const res = await databases.listDocuments(DB_ID, COL_ROLES, [
+      Query.equal("ativo", true),
+      Query.limit(100)
+    ]);
+    const fromDb = res.documents
+      .map((d) => {
+        const slug = normalizeRoleSlug({ role_id: d.$id, nome: d.nome || d.name });
+        return {
+          id: ALL_ROLES.includes(d.$id) ? d.$id : slug,
+          nome: d.nome || d.name || ROLE_INFO[slug]?.nome || slug,
+          ativo: d.ativo
+        };
+      })
+      .filter((r) => ALL_ROLES.includes(r.id));
+    if (fromDb.length > 0) return fromDb;
+  } catch (err) {
+    console.warn("adminListRoles:", err);
+  }
+  return ALL_ROLES.map((id) => ({
+    id,
+    nome: ROLE_INFO[id]?.nome || id,
+    ativo: true
+  }));
+}
+
+export async function adminListPermissions() {
+  await assertPermission(PERMISSIONS.MANAGE_PERMISSIONS);
+  const res = await databases.listDocuments(DB_ID, COL_PERMISSOES, [
+    Query.equal("ativo", true),
+    Query.limit(500)
+  ]);
+  return res.documents;
+}
+
+export async function adminListRolePermissions(roleId) {
+  await assertPermission(PERMISSIONS.MANAGE_PERMISSIONS);
+  const res = await databases.listDocuments(DB_ID, COL_ROLE_PERMISSOES, [
+    Query.equal("role_id", roleId),
+    Query.limit(500)
+  ]);
+  return res.documents;
+}
+
+/** Grava no banco as permissões padrão dos 3 perfis (Suporte, Gestor, Operador). */
+export async function adminSyncRoleDefaults() {
+  await assertPermission(PERMISSIONS.MANAGE_PERMISSIONS);
+  for (const roleId of ALL_ROLES) {
+    const keys = ROLE_PERMISSIONS[roleId] || [];
+    await adminUpdateRolePermissions(roleId, keys);
+  }
+  await createLog({
+    acao: "SYNC_ROLE_DEFAULTS",
+    entidade: "roles",
+    entidade_id: "all",
+    detalhes: "Permissões padrão dos perfis sincronizadas"
+  });
+  return true;
+}
+
+export async function adminUpdateRolePermissions(roleId, permissions) {
+  await assertPermission(PERMISSIONS.MANAGE_PERMISSIONS);
+  const me = await getUser();
+
+  // 1. Busca a lista completa de permissões do banco para poder converter "chave" em "permissao_id"
+  const allPerms = await adminListPermissions();
+  const permsMap = new Map(allPerms.map(p => [p.chave, p.id || p.$id]));
+
+  // 2. Busca permissões atuais da role
+  const current = await adminListRolePermissions(roleId);
+  const currentMap = new Map(current.map(p => [p.permissao_id, p.$id]));
+
+  // 3. Processa as novas permissões
+  // Se 'permissions' for um array de chaves (como o PermissionManager envia), convertemos para IDs
+  const targetPermIds = permissions.map(p => typeof p === 'string' ? permsMap.get(p) : p.permissao_id).filter(Boolean);
+
+  const promises = targetPermIds.map(async (permId) => {
+    if (currentMap.has(permId)) {
+      // Atualiza se já existe
+      const docId = currentMap.get(permId);
+      currentMap.delete(permId); // Remove do mapa para saber o que deletar depois
+      return databases.updateDocument(DB_ID, COL_ROLE_PERMISSOES, docId, {
+        permitido: true
+      });
+    } else {
+      // Cria novo se não existe
+      return databases.createDocument(DB_ID, COL_ROLE_PERMISSOES, ID.unique(), {
+        role_id: roleId,
+        permissao_id: permId,
+        permitido: true
+      });
+    }
+  });
+
+  // Remove as que não estão mais no array (se currentMap ainda tiver itens, são permissões removidas)
+  for (const [permId, docId] of currentMap.entries()) {
+    promises.push(databases.updateDocument(DB_ID, COL_ROLE_PERMISSOES, docId, {
+      permitido: false
+    }));
+  }
+
+  await Promise.all(promises);
+
+  await createLog({
+    acao: "UPDATE_ROLE_PERMISSIONS",
+    entidade: "roles",
+    entidade_id: roleId,
+    detalhes: `Permissões da role ${roleId} atualizadas`
+  });
+
+  return true;
+}
+
+/* ================================
    NOTIFICAÇÕES
 ================================ */
 
@@ -949,7 +1749,7 @@ export async function getNotifications(sector) {
   ]);
   const base = res.documents.map(n => ({
     id: n.$id,
-    documentId: n.propostaId,
+    documentId: n.propostald, // Corrigido de propostaId para propostald
     title: n.titulo,
     documentTitle: n.mensagem,
     date: n.data,
@@ -1128,8 +1928,8 @@ function mapDoc(d) {
     id: d.$id,
     title: d.titulo,
     description: d.descricao || "",
-    senderSector: d.authorSetor || d.setor,
-    targetSector: d.setorDestino,
+    senderSector: d.setor || d.authorSetor || d.author_setor || d.autorSetor || "Setor não identificado",
+    targetSector: d.setorDestino || d.setor_destino || "Peças",
     fileData: d.pdfUri || null,
     date: d.data,
     status: d.status,
@@ -1154,8 +1954,21 @@ export function getFileViewUrl(fileRef) {
   return storage.getFileView(BUCKET_ID, ref).href;
 }
 
-export async function resetPassword() {
-  throw new Error("Reset de senha deve ser realizado via backend Admin do Appwrite");
+export async function resetPassword(email) {
+  const em = String(email || "").trim();
+  if (!em) throw new Error("Informe o e-mail");
+  
+  // O Appwrite permite criar um token de recuperação de senha que é enviado por e-mail.
+  // O link redirecionará o usuário para a página de definição de nova senha no frontend.
+  const redirectUrl = (VITE_CANONICAL_URL || window.location.origin) + "/definir-senha";
+  
+  try {
+    await account.createRecovery(em, redirectUrl);
+    return true;
+  } catch (err) {
+    console.error("Erro ao solicitar recuperação de senha:", err);
+    throw new Error("Não foi possível enviar o e-mail de recuperação. Verifique o e-mail informado.");
+  }
 }
 
 /* ================================

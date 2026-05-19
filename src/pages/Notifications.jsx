@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 import * as api from "../services/api.js";
 import NotificationCard from "../components/NotificationCard.jsx";
+import Header from "../components/Header.jsx";
 
 export default function Notifications() {
   const { user } = useAuth();
@@ -36,14 +37,9 @@ export default function Notifications() {
 
   return (
     <>
-      <div className="content-header">
-        <div className="page-title">Notificações</div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <div className="notification-badge">{items.length}</div>
-          <div className="chip">{user?.sector}</div>
-        </div>
-      </div>
-      <div className="card col-12 stack">  
+      <Header title="Notificações" user={user} />
+      <div className="page-shell">
+      <div className="card col-12 stack">
         {items.length === 0 && <div className="empty">Sem notificações</div>}
         <div className="notif-actions">
           <button className="btn warning small" disabled={loading || items.length === 0} onClick={clear}>Limpar tudo</button>
@@ -60,6 +56,7 @@ export default function Notifications() {
             />
           ))}
         </div>
+      </div>
       </div>
     </>
   );

@@ -16,6 +16,14 @@ import Evaluate from "../pages/Evaluate.jsx";
 import Notifications from "../pages/Notifications.jsx";
 import Profile from "../pages/Profile.jsx";
 import Alert from "../components/Alert.jsx";
+
+// Páginas Administrativas (SUPORTE)
+import AdminDashboard from "../pages/AdminDashboard.jsx";
+import AdminUsers from "../pages/UserManager.jsx";
+import AdminSectors from "../pages/SectorManager.jsx";
+import AdminLogs from "../pages/AuditLogs.jsx";
+import PermissionManager from "../pages/PermissionManager.jsx";
+
 import Sidebar from "../components/Sidebar.jsx";
 import { LogoutIcon } from "../components/Icons.jsx";
 import DocumentDetail from "../pages/DocumentDetail.jsx";
@@ -26,21 +34,22 @@ import NewNotaFiscal from "../pages/NewNotaFiscal.jsx";
 import ReceivedNotas from "../pages/ReceivedNotas.jsx";
 import EvaluateNota from "../pages/EvaluateNota.jsx";
 import ToastManager from "../components/Toast.jsx";
-import { normalizeStatus, statuses } from "../utils/constants.js";
+import { PERMISSIONS, ROLES } from "../utils/acl.js";
+import { statuses, normalizeStatus } from "../utils/constants.js";
 
 function Protected({ children, permission }) {
-  const { user, loading, can } = useAuth();
+  const { user, loading, hasPermission } = useAuth();
   const location = useLocation();
 
   if (loading) return <div style={{ padding: 24 }}>Carregando...</div>;
   if (!user) return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
-  if (permission && !can(permission)) return <Navigate to="/" replace />;
+  if (permission && !hasPermission(permission)) return <Navigate to="/" replace />;
 
   return children;
 }
 
 function Layout({ children }) {
-  const { user, logout, can, isPrivileged } = useAuth();
+  const { user, logout, isAdmin, hasPermission } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [confirmLogout, setConfirmLogout] = useState(false);
@@ -51,17 +60,21 @@ function Layout({ children }) {
   const [counts, setCounts] = useState({ received: 0, notas: 0, notifications: 0 });
 
   const fetchData = async () => {
-    if (!user?.sector) return;
+    if (!user?.sector && !isAdmin) return;
     try {
+      if (isAdmin) {
+        setCounts({ received: 0, notas: 0, notifications: 0 });
+        return;
+      }
+
       const [receivedRes, notasRes, notifsRes] = await Promise.all([
-        can("view_received") ? api.getReceived(user.sector, { page: 1, pageSize: 50, allStatuses: true }) : Promise.resolve({ items: [], total: 0 }),
-        can("view_received") ? api.getNotasFiscais(user.sector, "received") : Promise.resolve({ items: [] }),
-        can("notifications") ? api.getNotifications(user.sector) : Promise.resolve([])
+        hasPermission(PERMISSIONS.VIEW_ATTEND_QUEUE) ? api.getReceived(user.sector, { page: 1, pageSize: 50, allStatuses: true }) : Promise.resolve({ items: [], total: 0 }),
+        hasPermission(PERMISSIONS.VIEW_NOTA_RECEIVED) ? api.getNotasFiscais(user.sector, "received") : Promise.resolve({ items: [] }),
+        hasPermission(PERMISSIONS.NOTIFICATIONS) ? api.getNotifications(user.sector) : Promise.resolve([])
       ]);
 
       const isPecas = user.sector === "Peças";
       
-      // Contagem de pedidos pendentes para o setor atual
       const pendingOrders = receivedRes.items.filter(d => {
         const st = normalizeStatus(d.status);
         const isTarget = d.targetSector === user.sector;
@@ -130,32 +143,48 @@ function Layout({ children }) {
       <div className={`sidebar-wrapper ${isMobile && sidebarOpen ? "open" : ""}`}>
         <Sidebar
           items={[
-            { label: "Dashboard", to: "/", end: true, icon: "home" },
-            ...(can("send")
-              ? (user?.sector === "Peças" 
-                  ? [{ label: "Enviar Nota Fiscal", to: "/enviar-nota", icon: "file-text" }]
-                  : [{ label: "Novo pedido", to: "/enviar", icon: "compose" }])
+            ...(hasPermission(PERMISSIONS.ADMIN_DASHBOARD)
+              ? [{ label: "Admin Dashboard", to: "/admin", icon: "home", end: true }]
               : []),
-            ...(can("view_received")
+            ...(hasPermission(PERMISSIONS.MANAGE_USERS)
+              ? [{ label: "Gerenciar Usuários", to: "/admin/usuarios", icon: "users" }]
+              : []),
+            ...(hasPermission(PERMISSIONS.MANAGE_PERMISSIONS)
+              ? [{ label: "Perfis de acesso", to: "/admin/permissoes", icon: "shield" }]
+              : []),
+            ...(hasPermission(PERMISSIONS.MANAGE_SECTORS)
+              ? [{ label: "Setores", to: "/admin/setores", icon: "layers" }]
+              : []),
+            ...(hasPermission(PERMISSIONS.VIEW_LOGS)
+              ? [{ label: "Logs/Auditoria", to: "/admin/logs", icon: "activity" }]
+              : []),
+            { label: "Dashboard", to: "/", end: true, icon: "home", hide: hasPermission(PERMISSIONS.ADMIN_DASHBOARD) },
+            ...(hasPermission(PERMISSIONS.CREATE_ORDER)
+              ? [{ label: "Novo pedido", to: "/enviar", icon: "compose" }]
+              : []),
+            ...(hasPermission(PERMISSIONS.CREATE_NOTA)
+              ? [{ label: "Enviar Nota Fiscal", to: "/enviar-nota", icon: "file-text" }]
+              : []),
+            ...(hasPermission(PERMISSIONS.VIEW_ATTEND_QUEUE)
               ? [{ 
                   label: "Pedidos para Atender", 
                   to: "/recebidos", 
                   icon: "received", 
-                  badge: user?.sector === "Peças" && counts.received > 0 
+                  badge: counts.received > 0
                 }]
               : []),
-            ...(can("view_received")
+            ...(hasPermission(PERMISSIONS.VIEW_NOTA_RECEIVED)
               ? [{ 
-                  label: "Notas Recebidas", 
+                  label: "Notas Fiscais", 
                   to: "/receber-notas", 
                   icon: "file-text", 
                   badge: counts.notas > 0 
                 }]
               : []),
-            ...(can("view_sent")
-              ? [{ label: user?.sector === "Peças" ? "Notas Enviadas" : "Pedidos Enviados", to: "/enviados", icon: "sent" }]
+            ...(hasPermission(PERMISSIONS.VIEW_SENT)
+              ? [{ label: "Pedidos Enviados", to: "/enviados", icon: "sent" }]
               : []),
-            ...(can("notifications")
+            ...(hasPermission(PERMISSIONS.NOTIFICATIONS)
               ? [{ 
                   label: "Notificações", 
                   to: "/notificacoes", 
@@ -164,7 +193,7 @@ function Layout({ children }) {
                 }]
               : []),
             { label: "Perfil", to: "/perfil", icon: "user" }
-          ]}
+          ].filter(item => !item.hide)}
           onLogout={() => setConfirmLogout(true)}
         />
       </div>
@@ -224,6 +253,8 @@ function Layout({ children }) {
 }
 
 export default function AppRouter() {
+  const { isAdmin } = useAuth();
+
   return (
     <>
       <Routes>
@@ -237,7 +268,62 @@ export default function AppRouter() {
           element={
             <Protected>
               <Layout>
-                <Dashboard />
+                {isAdmin ? <AdminDashboard /> : <Dashboard />}
+              </Layout>
+            </Protected>
+          }
+        />
+
+        <Route
+          path="/admin"
+          element={
+            <Protected permission={PERMISSIONS.ADMIN_DASHBOARD}>
+              <Layout>
+                <AdminDashboard />
+              </Layout>
+            </Protected>
+          }
+        />
+
+        <Route
+          path="/admin/usuarios"
+          element={
+            <Protected permission={PERMISSIONS.MANAGE_USERS}>
+              <Layout>
+                <AdminUsers />
+              </Layout>
+            </Protected>
+          }
+        />
+
+        <Route
+          path="/admin/permissoes"
+          element={
+            <Protected permission={PERMISSIONS.MANAGE_PERMISSIONS}>
+              <Layout>
+                <PermissionManager />
+              </Layout>
+            </Protected>
+          }
+        />
+
+        <Route
+          path="/admin/setores"
+          element={
+            <Protected permission={PERMISSIONS.MANAGE_SECTORS}>
+              <Layout>
+                <AdminSectors />
+              </Layout>
+            </Protected>
+          }
+        />
+
+        <Route
+          path="/admin/logs"
+          element={
+            <Protected permission={PERMISSIONS.VIEW_LOGS}>
+              <Layout>
+                <AdminLogs />
               </Layout>
             </Protected>
           }
@@ -246,7 +332,7 @@ export default function AppRouter() {
         <Route
           path="/recebidos"
           element={
-            <Protected permission="view_received">
+            <Protected permission={PERMISSIONS.VIEW_ATTEND_QUEUE}>
               <Layout>
                 <Received />
               </Layout>
@@ -257,7 +343,7 @@ export default function AppRouter() {
         <Route
           path="/receber-notas"
           element={
-            <Protected permission="view_received">
+            <Protected permission={PERMISSIONS.VIEW_NOTA_RECEIVED}>
               <Layout>
                 <ReceivedNotas />
               </Layout>
@@ -268,7 +354,7 @@ export default function AppRouter() {
         <Route
           path="/avaliar-nota/:id"
           element={
-            <Protected permission="evaluate">
+            <Protected permission={PERMISSIONS.APPROVE_NOTA}>
               <Layout>
                 <EvaluateNota />
               </Layout>
@@ -279,7 +365,7 @@ export default function AppRouter() {
         <Route
           path="/enviados"
           element={
-            <Protected permission="view_sent">
+            <Protected permission={PERMISSIONS.VIEW_SENT}>
               <Layout>
                 <Sent />
               </Layout>
@@ -290,7 +376,7 @@ export default function AppRouter() {
         <Route
           path="/enviar"
           element={
-            <Protected permission="send">
+            <Protected permission={PERMISSIONS.CREATE_ORDER}>
               <Layout>
                 <Sent compose={true} />
               </Layout>
@@ -312,7 +398,7 @@ export default function AppRouter() {
         <Route
           path="/avaliar/:id"
           element={
-            <Protected permission="evaluate">
+            <Protected permission={PERMISSIONS.EVALUATE_ORDER}>
               <Layout>
                 <Evaluate />
               </Layout>
@@ -323,7 +409,7 @@ export default function AppRouter() {
         <Route
           path="/notificacoes"
           element={
-            <Protected permission="notifications">
+            <Protected permission={PERMISSIONS.NOTIFICATIONS}>
               <Layout>
                 <Notifications />
               </Layout>

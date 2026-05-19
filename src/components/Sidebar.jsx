@@ -1,6 +1,10 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { HomeIcon, SentIcon, ReceivedIcon, ComposeIcon, BellIcon, UserIcon, KeyIcon, LogoutIcon, UserPlusIcon, FileTextIcon } from "./Icons.jsx";
+import { 
+  HomeIcon, SentIcon, ReceivedIcon, ComposeIcon, BellIcon, 
+  UserIcon, KeyIcon, LogoutIcon, UserPlusIcon, FileTextIcon,
+  UsersIcon, ShieldIcon, LayersIcon, ActivityIcon 
+} from "./Icons.jsx";
 import Logo from "./Logo.jsx";
 
 export default function Sidebar({ items, onLogout }) {
@@ -16,6 +20,10 @@ export default function Sidebar({ items, onLogout }) {
       case "key": return <KeyIcon />;
       case "logout": return <LogoutIcon />;
       case "file-text": return <FileTextIcon />;
+      case "users": return <UsersIcon />;
+      case "shield": return <ShieldIcon />;
+      case "layers": return <LayersIcon />;
+      case "activity": return <ActivityIcon />;
       default: return <HomeIcon />;
     }
   };
@@ -30,7 +38,7 @@ export default function Sidebar({ items, onLogout }) {
       <nav className="nav">
         {items.map((item) =>
           item.to ? (
-            <NavLink key={item.label} to={item.to} end={item.end} aria-label={item.label} className="nav-link-with-badge">
+            <NavLink key={item.to} to={item.to} end={item.end ?? false} aria-label={item.label} className="nav-link-with-badge">
               <span className="nav-ico-svg">{iconFor(item.icon)}</span>
               <span className="nav-label">{item.label}</span>
               {item.badge && <span className="nav-badge-dot" />}

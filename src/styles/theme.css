@@ -230,12 +230,34 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .col-12 { grid-column: span 12; }
 .col-6 { grid-column: span 12; }
 .col-4 { grid-column: span 12; }
+.col-3 { grid-column: span 12; }
 @media (min-width: 900px) {
   .col-6 { grid-column: span 6; }
   .col-4 { grid-column: span 4; }
+  .col-3 { grid-column: span 3; }
 }
 
 .stack {
   display: grid;
   gap: 12px;
+}
+
+/* ADMIN RESPONSIVITY */
+@media (max-width: 768px) {
+  .admin-permissions-grid {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .profile-list {
+    order: 2;
+  }
+
+  .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .actions {
+    gap: 8px !important;
+  }
 }

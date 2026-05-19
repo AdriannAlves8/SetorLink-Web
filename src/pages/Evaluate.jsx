@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from "react";
+import Header from "../components/Header.jsx";
 import { useParams, useNavigate } from "react-router-dom";
 import * as api from "../services/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
-import { statuses, statusClass, normalizeStatus, statusLabel, sectors, isPecasSector } from "../utils/constants.js";
+import { statuses, statusClass, normalizeStatus, statusLabel, isPecasSector, canForwardToSector } from "../utils/constants.js";
+import { PERMISSIONS } from "../utils/acl.js";
 import { showToast } from "../components/Toast.jsx";
 
 export default function Evaluate() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, sectors, hasPermission } = useAuth();
   const [doc, setDoc] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -17,6 +19,18 @@ export default function Evaluate() {
   const [openError, setOpenError] = useState(null);
   const [preview, setPreview] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const [forwardSectors, setForwardSectors] = useState([]);
+
+  useEffect(() => {
+    if (!user || !isPecasSector(user.sector)) return;
+    let cancelled = false;
+    api.listSectorsForForward()
+      .then((list) => { if (!cancelled) setForwardSectors(list || []); })
+      .catch(() => { if (!cancelled) setForwardSectors([]); });
+    return () => { cancelled = true; };
+  }, [user?.sector]);
+
+  const sectorOptions = forwardSectors.length > 0 ? forwardSectors : sectors;
 
   useEffect(() => {
     async function load() {
@@ -27,9 +41,13 @@ export default function Evaluate() {
         // Proteção de Rota: Verifica se o usuário tem permissão para avaliar este documento
         const st = normalizeStatus(d.status);
         const isPecas = isPecasSector(user?.sector);
+        const canPecasQueue =
+          isPecas &&
+          (hasPermission(PERMISSIONS.VIEW_RECEIVED) || hasPermission(PERMISSIONS.VIEW_ATTEND_QUEUE));
         const isTarget = d.targetSector === user?.sector;
-        const podeAtender = (isPecas && (st === statuses.PENDENTE || st === statuses.APROVADO || st === statuses.EM_ATENDIMENTO || st === statuses.RECUSADO)) || 
-                            (isTarget && st === statuses.ENCAMINHADO);
+        const podeAtender = (canPecasQueue && (st === statuses.PENDENTE || st === statuses.APROVADO || st === statuses.EM_ATENDIMENTO || st === statuses.RECUSADO)) || 
+                            (isTarget && st === statuses.ENCAMINHADO) ||
+                            (hasPermission(PERMISSIONS.EVALUATE_ORDER) && d.uidCriador === user?.uid && st === statuses.PENDENTE);
 
         if (!podeAtender) {
           showToast({ type: "error", message: "Você não tem permissão para avaliar este documento." });
@@ -145,15 +163,15 @@ export default function Evaluate() {
   if (!doc) return <div style={{ padding: 24 }}>Carregando...</div>;
 
   const st = normalizeStatus(doc.status);
-  const isPecas = isPecasSector(user?.sector);
+  const canQueue =
+    isPecasSector(user?.sector) &&
+    (hasPermission(PERMISSIONS.VIEW_RECEIVED) || hasPermission(PERMISSIONS.VIEW_ATTEND_QUEUE));
   const isTarget = doc.targetSector === user?.sector;
 
   return (
     <>
-      <div className="content-header">
-        <div className="page-title">Atender pedido</div>
-        <div className="chip">{user?.sector}</div>
-      </div>
+      <Header title="Atender Pedido" user={user} />
+      <div className="page-shell">
       <div className="grid">
         <div className="card col-8">
           <div className="card-header">
@@ -254,7 +272,7 @@ export default function Evaluate() {
             )}
 
             {/* Ações de Peças: Encaminhar ou Rejeitar */}
-            {isPecas && st === statuses.PENDENTE && (
+            {canQueue && st === statuses.PENDENTE && (
               <div className="stack" style={{ marginTop: 16, gap: 12 }}>
                 <div style={{ fontWeight: 700 }}>Ações do Setor Peças</div>
                 <div className="stack" style={{ gap: 8 }}>
@@ -265,9 +283,11 @@ export default function Evaluate() {
                     style={{ padding: "8px", borderRadius: "8px", border: "1px solid var(--border)" }}
                   >
                     <option value="">Selecione um setor...</option>
-                    {sectors.filter(s => s !== "Peças").map(s => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
+                    {sectorOptions
+                      .filter((s) => s.ativo !== false && canForwardToSector(s.nome))
+                      .map((s) => (
+                        <option key={s.id} value={s.nome}>{s.nome}</option>
+                      ))}
                   </select>
                   <button className="btn success" disabled={loading || !selectedSector} onClick={forward}>Encaminhar pedido</button>
                 </div>
@@ -295,7 +315,7 @@ export default function Evaluate() {
             )}
 
             {/* Ações de Peças: Atender ou Finalizar */}
-            {isPecas && (st === statuses.APROVADO || st === statuses.RECUSADO || st === statuses.EM_ATENDIMENTO) && (
+            {canQueue && (st === statuses.APROVADO || st === statuses.RECUSADO || st === statuses.EM_ATENDIMENTO) && (
               <div className="stack" style={{ marginTop: 16, gap: 12 }}>
                 <div style={{ fontWeight: 700, color: "var(--primary)" }}>Processamento de Peças</div>
                 
@@ -350,7 +370,7 @@ export default function Evaluate() {
             )}
 
             {st !== statuses.RECUSADO && st !== statuses.FINALIZADO && 
-             !((isPecas && (st === statuses.PENDENTE || st === statuses.APROVADO || st === statuses.EM_ATENDIMENTO)) || 
+             !((canQueue && (st === statuses.PENDENTE || st === statuses.APROVADO || st === statuses.EM_ATENDIMENTO)) || 
                (isTarget && st === statuses.ENCAMINHADO)) && (
               <div className="chip" style={{ marginTop: 16 }}>Aguardando processamento pelos setores responsáveis.</div>
             )}
@@ -358,6 +378,7 @@ export default function Evaluate() {
             {error && <div className="chip" style={{ color: "var(--red)", marginTop: 8 }}>{error}</div>}
           </div>
         </div>
+      </div>
       </div>
     </>
   );

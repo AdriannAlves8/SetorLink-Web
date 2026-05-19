@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import * as api from "../services/api.js";
 import { useNavigate } from "react-router-dom";
+import Logo from "../components/Logo.jsx";
 
 export default function VerifyEmail() {
   const nav = useNavigate();
@@ -40,10 +41,29 @@ export default function VerifyEmail() {
   }, [nav]);
 
   return (
-    <div style={{ padding: 24 }}>
-      <div className="card col-12">
-        <div className="form">
-          <div className="chip">{msg}</div>
+    <div className="login-full">
+      <div className="login-wrapper">
+        <div className="login-hero">
+          <div className="hero-brand">
+            <Logo size={48} src="/logo-icon.png" />
+            <div className="hero-text">
+              <div className="hero-title">SetorLink</div>
+              <div className="hero-sub">Verificação de e-mail</div>
+            </div>
+          </div>
+        </div>
+        <div className="login-panel">
+          <div className="login-box">
+            <div className="login-header">
+              <div className="login-head-text">
+                <div className="title">Verificação</div>
+                <div className="subtitle">{done ? "Processo concluído" : "Aguarde um momento"}</div>
+              </div>
+            </div>
+            <div className="form narrow">
+              <div className="chip" style={{ width: "100%", textAlign: "center", padding: "1rem" }}>{msg}</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

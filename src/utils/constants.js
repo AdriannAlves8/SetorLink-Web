@@ -17,6 +17,7 @@ export const sectors = [
 ];
 
 export const sectorEmails = {
+  "Suporte": "adriannalvesdev@gmail.com",
   "RH": ["aline@gsapori.com.br","gpessoas@gsapori.com.br"],
   "Peças": "thais@poligonofiat.com.br",
   "TI": ["william@gsapori.com.br", "ti@gsapori.com.br"],
@@ -92,6 +93,15 @@ export function statusLabel(s) {
 
 export function isPecasSector(sector) {
   return normKey(sector) === "pecas";
+}
+
+export function isSuporteSector(sector) {
+  return normKey(sector) === "suporte";
+}
+
+/** Setores disponíveis no encaminhamento feito por Peças */
+export function canForwardToSector(sector) {
+  return !isPecasSector(sector) && !isSuporteSector(sector);
 }
 
 export function isPrivilegedSector(sector) {

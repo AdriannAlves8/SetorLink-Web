@@ -2,13 +2,15 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as api from "../services/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
-import { statuses, statusClass, normalizeStatus, statusLabel } from "../utils/constants.js";
+import { statuses, statusClass, normalizeStatus, statusLabel, isPecasSector } from "../utils/constants.js";
+import { PERMISSIONS } from "../utils/acl.js";
 import { showToast } from "../components/Toast.jsx";
+import Header from "../components/Header.jsx";
 
 export default function DocumentDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user, can } = useAuth();
+  const { user, can, hasPermission } = useAuth();
   const [doc, setDoc] = useState(null);
   const [openError, setOpenError] = useState(null);
   const [preview, setPreview] = useState(false);
@@ -26,11 +28,17 @@ export default function DocumentDetail() {
         // 1. Setor Peças sempre vê.
         // 2. O criador do pedido (uidCriador) sempre vê.
         // 3. O setor de destino (setorDestino) só vê se o status for ENCAMINHADO.
-        const isPecas = user?.sector === "Peças";
+        const canPecasQueue =
+          isPecasSector(user?.sector) &&
+          (hasPermission(PERMISSIONS.VIEW_RECEIVED) || hasPermission(PERMISSIONS.VIEW_ATTEND_QUEUE));
         const isOwner = d.uidCriador === user?.uid || d.senderSector === user?.sector;
         const isTarget = d.targetSector === user?.sector;
+        const canViewAsTarget =
+          isTarget &&
+          hasPermission(PERMISSIONS.VIEW_ATTEND_QUEUE) &&
+          normalizeStatus(d.status) === statuses.ENCAMINHADO;
 
-        if (!isPecas && !isOwner && !isTarget) {
+        if (!canPecasQueue && !isOwner && !canViewAsTarget) {
           throw new Error("Você não tem permissão para visualizar este pedido.");
         }
 
@@ -114,10 +122,8 @@ export default function DocumentDetail() {
 
   return (
     <>
-      <div className="content-header">
-        <div className="page-title">Detalhes do pedido</div>
-        <div className="chip">{user?.sector}</div>
-      </div>
+      <Header title="Detalhes do pedido" user={user} />
+      <div className="page-shell">
       <div className="grid">
         <div className="card col-8">
           <div className="card-header">
@@ -220,6 +226,7 @@ export default function DocumentDetail() {
             {error && <div className="chip" style={{ color: "var(--red)", marginTop: 8 }}>{error}</div>}
           </div>
         </div>
+      </div>
       </div>
     </>
   );

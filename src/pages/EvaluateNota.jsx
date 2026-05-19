@@ -4,6 +4,7 @@ import * as api from "../services/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { statuses, statusClass, normalizeStatus, statusLabel } from "../utils/constants.js";
 import { showToast } from "../components/Toast.jsx";
+import Header from "../components/Header.jsx";
 
 export default function EvaluateNota() {
   const { id } = useParams();
@@ -80,11 +81,8 @@ export default function EvaluateNota() {
 
   return (
     <>
-      <div className="content-header">
-        <div className="page-title">Avaliar Nota Fiscal</div>
-        <div className="chip">{user?.sector}</div>
-      </div>
-
+      <Header title="Avaliar Nota Fiscal" user={user} />
+      <div className="page-shell">
       <div className="grid">
         <div className="card col-8">
           <div className="card-header">
@@ -166,6 +164,7 @@ export default function EvaluateNota() {
             {error && <div className="chip" style={{ color: "var(--red)", marginTop: 8 }}>{error}</div>}
           </div>
         </div>
+      </div>
       </div>
     </>
   );

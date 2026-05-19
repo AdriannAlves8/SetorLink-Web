@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
-import * as api from "../services/api.js";
+import { PERMISSIONS } from "../utils/acl.js";
 import { sectors } from "../utils/constants.js";
+import * as api from "../services/api.js";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../components/Toast.jsx";
+import Header from "../components/Header.jsx";
 
 export default function NewNotaFiscal() {
-  const { user, can } = useAuth();
+  const { user, hasPermission } = useAuth();
   const navigate = useNavigate();
 
   const [title, setTitle] = useState("");
@@ -91,16 +93,15 @@ export default function NewNotaFiscal() {
     }
   };
 
-  if (user?.sector !== "Peças") return <div className="content">Acesso negado. Apenas o setor Peças pode enviar notas fiscais.</div>;
+  if (!hasPermission(PERMISSIONS.CREATE_NOTA)) {
+    return <div className="content">Você não tem permissão para emitir notas fiscais.</div>;
+  }
 
   return (
     <>
-      <div className="content-header">
-        <div className="page-title">Enviar Nota Fiscal</div>
-        <div className="chip">{user?.sector}</div>
-      </div>
-
-      <form className="form stack" onSubmit={send}>
+      <Header title="Enviar Nota Fiscal" user={user} />
+      <div className="page-shell">
+      <form className="form stack card" onSubmit={send} style={{ padding: "1.25rem" }}>
         <div className="form-row">
           <label>Nome da Nota Fiscal <span style={{ color: "var(--red)" }}>*</span></label>
           <input
@@ -147,6 +148,7 @@ export default function NewNotaFiscal() {
           </button>
         </div>
       </form>
+      </div>
     </>
   );
 }

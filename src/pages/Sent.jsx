@@ -3,13 +3,16 @@ import { useAuth } from "../context/AuthContext.jsx";
 import * as api from "../services/api.js";
 import { statuses, statusClass, normalizeStatus, statusLabel } from "../utils/constants.js";
 import { NavLink, useNavigate } from "react-router-dom";
-import StatusFilter from "../components/StatusFilter.jsx";
+import StatusFilter, { matchesStatusFilter } from "../components/StatusFilter.jsx";
 import * as XLSX from "xlsx";
 import { ExportIcon } from "../components/Icons.jsx";
 import { showToast } from "../components/Toast.jsx";
+import { PERMISSIONS } from "../utils/acl.js";
+
+import Header from "../components/Header.jsx";
 
 export default function Sent({ compose = false }) {
-  const { user, can } = useAuth();
+  const { user, hasPermission } = useAuth();
   const navigate = useNavigate();
 
   const [isComposing, setIsComposing] = useState(compose);
@@ -36,7 +39,7 @@ export default function Sent({ compose = false }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [loadingList, setLoadingList] = useState(false);
 
-  const canExport = user?.sector === "Peças";
+  const canExport = hasPermission(PERMISSIONS.EXPORT_EXCEL);
 
   async function load() {
     try {
@@ -78,7 +81,7 @@ export default function Sent({ compose = false }) {
     e.preventDefault();
     setError(null);
 
-    if (!can("send")) return;
+    if (!hasPermission(PERMISSIONS.CREATE_ORDER)) return;
 
     const tituloTrim = String(title || "").trim();
     const descTrim = String(description || "").trim();
@@ -166,14 +169,9 @@ export default function Sent({ compose = false }) {
   };
 
   const filteredDocs = useMemo(() => {
-    return docs.filter((d) => {
-      if (filter === "Todos") return true;
-      if (filter === "ANALISE") {
-        const st = normalizeStatus(d.status);
-        return st === statuses.PENDENTE || st === statuses.ENCAMINHADO || st === statuses.EM_ATENDIMENTO;
-      }
-      return normalizeStatus(d.status) === filter;
-    });
+    return docs.filter((d) =>
+      matchesStatusFilter(normalizeStatus(d.status), filter, "sent")
+    );
   }, [docs, filter]);
 
   const exportToExcel = async () => {
@@ -279,7 +277,7 @@ export default function Sent({ compose = false }) {
   };
 
   const canDeleteRow = (d) => {
-    if (!can("delete_if_pending")) return false;
+      if (!hasPermission(PERMISSIONS.DELETE_PENDING)) return false;
     if (normalizeStatus(d.status) !== statuses.PENDENTE) return false;
     if (d.uidCriador) return user.uid === d.uidCriador;
     return d.senderSector === user.sector;
@@ -287,14 +285,13 @@ export default function Sent({ compose = false }) {
 
   return (
     <>
-      <div className="content-header">
-        <div className="page-title">
-          {user?.sector === "Peças" ? "Notas Fiscais Enviadas" : (isComposing ? "Criar Pedido" : "Pedidos enviados")}
-        </div>
-        <div className="chip">{user?.sector}</div>
-      </div>
+      <Header 
+        title={user?.sector === "Peças" ? "Notas Fiscais Enviadas" : (isComposing ? "Criar Pedido" : "Pedidos enviados")} 
+        user={user} 
+      />
 
-      {isComposing && can("send") && (
+      <div className="page-shell">
+      {isComposing && hasPermission(PERMISSIONS.CREATE_ORDER) && (
         <form className="form stack" onSubmit={send}>
           <div className="helper" style={{ color: "var(--muted)", marginBottom: 4 }}>
             O pedido será analisado exclusivamente pelo setor Peças.
@@ -434,16 +431,21 @@ export default function Sent({ compose = false }) {
 
       {!isComposing && (
         <>
-          <StatusFilter value={filter} onChange={setFilter} />
+          <StatusFilter value={filter} onChange={setFilter} variant="sent" />
 
-          {canExport && (
-            <div className="actions" style={{ marginBottom: 8, justifyContent: "flex-end" }}>
+          <div className="actions" style={{ marginBottom: 8, justifyContent: "flex-end", gap: 8 }}>
+            {canExport && (
               <button className="btn primary export-btn" onClick={exportToExcel} disabled={loadingList}>
                 <ExportIcon />
                 Exportar registros processados
               </button>
-            </div>
-          )}
+            )}
+            {hasPermission(PERMISSIONS.CREATE_ORDER) && (
+              <button className="btn primary" onClick={() => setIsComposing(true)}>
+                Novo Pedido
+              </button>
+            )}
+          </div>
 
           <div className="card col-12">
             <div className="table-container">
@@ -526,6 +528,7 @@ export default function Sent({ compose = false }) {
           </div>
         </>
       )}
+      </div>
       {confirmDelete && (
         <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
           <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
