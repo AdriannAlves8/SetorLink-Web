@@ -182,7 +182,7 @@ export default function ReceivedNotas() {
           </div>
         </div>
         <div className="table-container">
-          <table className="table">
+          <table className="table table--stacked">
             <thead>
               <tr>
                 <th>Nome da Nota</th>
@@ -195,22 +195,24 @@ export default function ReceivedNotas() {
             <tbody>
               {loading && Array.from({ length: 6 }).map((_, i) => (
                 <tr key={`skeleton-${i}`}>
-                  <td><div className="skeleton" style={{ width: 160 }} /></td>
-                  <td><div className="skeleton" style={{ width: 100 }} /></td>
-                  <td><div className="skeleton" style={{ width: 140 }} /></td>
-                  <td><div className="skeleton" style={{ width: 80 }} /></td>
-                  <td><div className="skeleton" style={{ width: 120 }} /></td>
+                  <td data-label="Nome da Nota"><div className="skeleton" style={{ width: 160 }} /></td>
+                  <td data-label={typeFilter === "received" ? "Remetente" : "Destino"}><div className="skeleton" style={{ width: 100 }} /></td>
+                  <td data-label="Data"><div className="skeleton" style={{ width: 140 }} /></td>
+                  <td data-label="Status"><div className="skeleton" style={{ width: 80 }} /></td>
+                  <td data-label="Ações"><div className="skeleton" style={{ width: 120 }} /></td>
                 </tr>
               ))}
               {!loading && notas.map(n => (
                 <tr key={n.id}>
-                  <td>{n.title.replace("[NOTA FISCAL] ", "")}</td>
-                  <td>{typeFilter === "received" ? n.senderSector : n.targetSector}</td>
-                  <td>{new Date(n.date).toLocaleString()}</td>
-                  <td>
+                  <td data-label="Nome da Nota">{n.title.replace("[NOTA FISCAL] ", "")}</td>
+                  <td data-label={typeFilter === "received" ? "Remetente" : "Destino"}>
+                    {typeFilter === "received" ? n.senderSector : n.targetSector}
+                  </td>
+                  <td data-label="Data">{new Date(n.date).toLocaleString()}</td>
+                  <td data-label="Status">
                     <span className={`status ${statusClass(n.status)}`}>{statusLabel(n.status)}</span>
                   </td>
-                  <td>
+                  <td data-label="Ações">
                     <div style={{ display: "flex", gap: 8 }}>
                       <button className="btn primary small" onClick={() => openFile(n.fileData)}>Ver PDF</button>
                       {typeFilter === "received" && normalizeStatus(n.status) === statuses.PENDENTE ? (

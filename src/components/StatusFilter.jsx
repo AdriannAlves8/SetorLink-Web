@@ -1,65 +1,44 @@
 import React from "react";
 import { statuses } from "../utils/constants.js";
 
+/** Opções de filtro para quem ENVIA (Meus Pedidos / Minhas Notas) */
 const SENT_OPTIONS = [
   { label: "Todos", value: "Todos" },
-  { label: "Em andamento", value: "EM_ANDAMENTO" },
-  { label: "Aprovado (compra)", value: statuses.APROVADO },
-  { label: "Finalizado", value: statuses.FINALIZADO },
-  { label: "Recusado", value: statuses.RECUSADO }
+  { label: "Pendentes", value: statuses.PENDENTE },
+  { label: "Em Atendimento", value: statuses.EM_ATENDIMENTO },
+  { label: "Encaminhados", value: statuses.ENCAMINHADO },
+  { label: "Aprovados", value: statuses.APROVADO },
+  { label: "Finalizados", value: statuses.FINALIZADO },
+  { label: "Recusados", value: statuses.RECUSADO }
 ];
 
+/** Opções de filtro para quem RECEBE/AVALIA (Fila de Peças / Recebidos) */
 const ATTEND_OPTIONS = [
   { label: "Todos", value: "Todos" },
-  { label: "Em análise", value: "EM_ANALISE" },
-  { label: "Encaminhado", value: statuses.ENCAMINHADO },
-  { label: "Aprovado", value: statuses.APROVADO },
-  { label: "Finalizado", value: statuses.FINALIZADO },
-  { label: "Recusado", value: statuses.RECUSADO }
-];
-
-/** @deprecated use variant="sent" — mantém compatibilidade */
-const LEGACY_OPTIONS = [
-  { label: "Todos", value: "Todos" },
-  { label: "Em análise", value: "ANALISE" },
-  { label: "Aprovado (Compra)", value: statuses.APROVADO },
-  { label: "Finalizado", value: statuses.FINALIZADO },
-  { label: "Rejeitado", value: statuses.RECUSADO }
+  { label: "Pendentes", value: statuses.PENDENTE },
+  { label: "Em Atendimento", value: statuses.EM_ATENDIMENTO },
+  { label: "Encaminhados", value: statuses.ENCAMINHADO },
+  { label: "Aprovados", value: statuses.APROVADO },
+  { label: "Finalizados", value: statuses.FINALIZADO },
+  { label: "Recusados", value: statuses.RECUSADO }
 ];
 
 const VARIANTS = {
   sent: SENT_OPTIONS,
   attend: ATTEND_OPTIONS,
-  legacy: LEGACY_OPTIONS
+  legacy: SENT_OPTIONS
 };
 
 export function matchesStatusFilter(status, filter, variant = "legacy") {
-  const st = status;
   if (filter === "Todos") return true;
-
-  if (variant === "attend" || variant === "legacy") {
-    if (filter === "EM_ANALISE" || filter === "ANALISE") {
-      return st === statuses.PENDENTE || st === statuses.EM_ATENDIMENTO;
-    }
-  }
-
-  if (variant === "sent" && filter === "EM_ANDAMENTO") {
-    return (
-      st === statuses.PENDENTE ||
-      st === statuses.EM_ATENDIMENTO ||
-      st === statuses.ENCAMINHADO ||
-      st === statuses.APROVADO
-    );
-  }
-
-  return st === filter;
+  return status === filter;
 }
 
-export default function StatusFilter({ value, onChange, variant = "legacy" }) {
-  const options = VARIANTS[variant] || LEGACY_OPTIONS;
+export default function StatusFilter({ value, onChange, variant = "sent" }) {
+  const options = VARIANTS[variant] || SENT_OPTIONS;
 
   return (
-    <div className="status-filter-container" role="group" aria-label="Filtrar por status">
+    <div className="status-filter-container" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
       {options.map((opt) => {
         const active = value === opt.value;
         return (
@@ -67,8 +46,18 @@ export default function StatusFilter({ value, onChange, variant = "legacy" }) {
             key={opt.value}
             type="button"
             className={`filter-chip ${active ? "active" : ""}`}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '20px',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              border: '1px solid var(--border)',
+              background: active ? 'var(--primary)' : 'var(--surface)',
+              color: active ? '#fff' : 'var(--muted)',
+              transition: 'all 0.2s ease'
+            }}
             onClick={() => onChange(opt.value)}
-            aria-pressed={active}
           >
             {opt.label}
           </button>

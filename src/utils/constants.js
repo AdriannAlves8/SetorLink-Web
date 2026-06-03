@@ -48,14 +48,6 @@ export const statuses = {
   RECUSADO: "RECUSADO"
 };
 
-function normKey(s) {
-  return String(s || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLowerCase();
-}
-
 /**np
  * Converte qualquer status legado ou atual para um dos valores canônicos em `statuses`.
  */
@@ -77,17 +69,35 @@ export function normalizeStatus(s) {
   return statuses.PENDENTE;
 }
 
+function normKey(s) {
+  return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+}
+
 /** Texto para exibição na UI */
 export function statusLabel(s) {
   const n = normalizeStatus(s);
   switch (n) {
-    case statuses.PENDENTE: return "Em análise";
-    case statuses.EM_ATENDIMENTO: return "Em atendimento";
+    case statuses.PENDENTE: return "Pendente";
+    case statuses.EM_ATENDIMENTO: return "Em Atendimento";
     case statuses.ENCAMINHADO: return "Encaminhado";
-    case statuses.APROVADO: return "Aprovado (Aguardando compra)";
+    case statuses.APROVADO: return "Aprovado";
     case statuses.FINALIZADO: return "Finalizado";
-    case statuses.RECUSADO: return "Rejeitado";
+    case statuses.RECUSADO: return "Recusado";
     default: return String(s || "—");
+  }
+}
+
+/** Classe CSS para o status */
+export function statusClass(s) {
+  const n = normalizeStatus(s);
+  switch (n) {
+    case statuses.PENDENTE: return "pendente";
+    case statuses.EM_ATENDIMENTO: return "em_atendimento";
+    case statuses.ENCAMINHADO: return "encaminhado";
+    case statuses.APROVADO: return "aprovado";
+    case statuses.FINALIZADO: return "finalizado";
+    case statuses.RECUSADO: return "rejeitado";
+    default: return "pendente";
   }
 }
 
@@ -106,15 +116,4 @@ export function canForwardToSector(sector) {
 
 export function isPrivilegedSector(sector) {
   return sector === "RH" || sector === "Peças";
-}
-
-export function statusClass(s) {
-  const n = normalizeStatus(s);
-  if (n === statuses.FINALIZADO) return "finalizado"; // Verde escuro
-  if (n === statuses.APROVADO) return "aprovado"; // Verde claro
-  if (n === statuses.RECUSADO) return "rejeitado"; // Vermelho
-  if (n === statuses.EM_ATENDIMENTO) return "em_atendimento"; // Azul
-  if (n === statuses.ENCAMINHADO) return "encaminhado"; // Roxo ou Azul claro
-  if (n === statuses.PENDENTE) return "pendente"; // Laranja
-  return "pendente";
 }

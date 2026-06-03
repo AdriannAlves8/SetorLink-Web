@@ -1,40 +1,68 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 import * as api from "../services/api.js";
 import { statuses, normalizeStatus, statusLabel, statusClass, isPecasSector } from "../utils/constants.js";
 import { NavLink } from "react-router-dom";
 import { PERMISSIONS } from "../utils/acl.js";
 import Header from "../components/Header.jsx";
-import SummaryCard from "../components/SummaryCard.jsx";
-import DocumentCard from "../components/DocumentCard.jsx";
-import NotificationItem from "../components/NotificationItem.jsx";
+
+// Otimização: Componentes menores para evitar re-render da página toda
+const StatItem = React.memo(({ icon, count, label, background, color }) => (
+  <div className="summary-item-small">
+    <div className="icon" style={{ background, color }}>
+      {icon}
+    </div>
+    <div className="stack">
+      <span style={{ fontWeight: 700, fontSize: '1.25rem' }}>{count}</span>
+      <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{label}</span>
+    </div>
+  </div>
+));
+
+const TableSkeleton = () => (
+  <>
+    {Array.from({ length: 5 }).map((_, i) => (
+      <tr key={i}>
+        <td data-label="Documento"><div className="skeleton" style={{ height: 24, width: '80%' }} /></td>
+        <td data-label="Remetente"><div className="skeleton" style={{ height: 20, width: 60 }} /></td>
+        <td data-label="Destino"><div className="skeleton" style={{ height: 20, width: 60 }} /></td>
+        <td data-label="Status"><div className="skeleton" style={{ height: 24, width: 80, borderRadius: 12 }} /></td>
+        <td data-label="Ações"><div className="skeleton" style={{ height: 32, width: '100%' }} /></td>
+      </tr>
+    ))}
+  </>
+);
 
 export default function Dashboard() {
   const { user, hasPermission } = useAuth();
-  const [received, setReceived] = useState([]);
-  const [notifications, setNotifications] = useState([]);
-  const [sent, setSent] = useState([]);
+  const [recentItems, setRecentItems] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     pending: 0,
     emAtendimento: 0,
     finalizado: 0,
-    rejeitado: 0
+    rejeitado: 0,
+    pendingOrders: 0,
+    pendingNotas: 0
   });
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!user) return;
-      
-      const [statsRes, receivedRes, notasRes, notifsRes] = await Promise.all([
+  const fetchData = useCallback(async (isInitial = false) => {
+    if (!user) return;
+    if (user.role_id === "suporte") return;
+
+    if (isInitial) setLoading(true);
+    
+    try {
+      const [statsRes, receivedRes, notasRes, recentRes] = await Promise.all([
         api.getStats(
           { userId: user.uid, sector: user.sector },
           { scope: hasPermission(PERMISSIONS.VIEW_RECEIVED) && isPecasSector(user.sector) ? "all" : "mine" }
         ),
-        hasPermission(PERMISSIONS.VIEW_ATTEND_QUEUE)
-          ? api.getReceived(user.sector, { page: 1, pageSize: 8, allStatuses: true })
+        hasPermission(PERMISSIONS.ATTEND_ORDER)
+          ? api.getReceived(user.sector, { page: 1, pageSize: 10, allStatuses: true })
           : Promise.resolve({ items: [] }),
         hasPermission(PERMISSIONS.VIEW_NOTA_RECEIVED) ? api.getNotasFiscais(user.sector, "received") : Promise.resolve({ items: [] }),
-        hasPermission(PERMISSIONS.NOTIFICATIONS) ? api.getNotifications(user.sector) : Promise.resolve([])
+        api.getDashboardRecentItems()
       ]);
 
       const isPecas = user.sector === "Peças";
@@ -54,26 +82,47 @@ export default function Dashboard() {
         pendingNotas: pendingNotasCount
       });
 
-      if (hasPermission(PERMISSIONS.VIEW_ATTEND_QUEUE)) {
-        setReceived(receivedRes.items);
-      }
+      setRecentItems(recentRes);
+    } catch (err) {
+      console.error("Dashboard fetchData error:", err);
+    } finally {
+      if (isInitial) setLoading(false);
+    }
+  }, [user?.sector, user?.uid, hasPermission]);
 
-      setNotifications(notifsRes);
-
-      if (hasPermission(PERMISSIONS.VIEW_SENT) || hasPermission(PERMISSIONS.VIEW_NOTA_SENT)) {
-        const res = user.sector === "Peças" 
-          ? await api.getNotasFiscais(user.sector, "sent")
-          : await api.getSent(user.uid, user.sector, { page: 1, pageSize: 50 });
-        setSent(res.items);
-      }
+  useEffect(() => {
+    fetchData(true);
+    
+    // Otimização: Debounce no realtime para evitar excesso de requisições em picos de atividade
+    let timeout;
+    const handleUpdate = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => fetchData(false), 2000);
     };
 
-    fetchData();
-    const unsubscribe = api.subscribe([api.CHANNELS.PROPOSTAS, api.CHANNELS.NOTIFICACOES], fetchData);
-    return () => unsubscribe();
-  }, [user?.sector, user?.uid]);
+    const unsubscribe = api.subscribe([api.CHANNELS.PROPOSTAS], handleUpdate);
+    return () => {
+      unsubscribe();
+      clearTimeout(timeout);
+    };
+  }, [fetchData]);
 
-  const firstName = user?.name?.split(" ")[0] || user?.sector;
+  const firstName = useMemo(() => user?.name?.split(" ")[0] || user?.sector, [user?.name, user?.sector]);
+
+  if (user?.role_id === "suporte") {
+    return (
+      <>
+        <Header title="Painel Administrativo" user={user} />
+        <div className="page-shell">
+          <div className="alert info" style={{ padding: '2rem', textAlign: 'center' }}>
+            <h2>Bem-vindo ao SetorLink</h2>
+            <p>Seu perfil de <strong>Suporte</strong> utiliza o Painel Administrativo para gerenciar o sistema.</p>
+            <NavLink to="/admin" className="btn primary" style={{ marginTop: '1rem' }}>Acessar Painel Admin</NavLink>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -91,7 +140,7 @@ export default function Dashboard() {
           </div>
           
           <div className="hero-quick-actions">
-            {hasPermission(PERMISSIONS.VIEW_ATTEND_QUEUE) && (
+            {hasPermission(PERMISSIONS.ATTEND_ORDER) && (
             <NavLink to="/recebidos" className="quick-action-item">
               <div className="quick-action-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
@@ -99,7 +148,7 @@ export default function Dashboard() {
               Pedidos para atender
               {stats.pendingOrders > 0 && <span className="nav-badge-dot" style={{ position: 'static', marginLeft: 8 }} />}
             </NavLink>
-            )}
+            )} 
             <NavLink to="/receber-notas" className="quick-action-item">
               <div className="quick-action-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"></path><path d="M18 14h-8"></path><path d="M15 18h-5"></path><path d="M10 6h8v4h-8V6Z"></path></svg>
@@ -124,59 +173,49 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Resumo do dia (Agora no topo) */}
+      {/* Resumo do dia */}
       <div className="daily-summary-footer" style={{ marginTop: 0, marginBottom: '2rem' }}>
         <div className="daily-summary-header">
           <div className="card-title">Resumo do dia</div>
           <div className="chip">{new Date().toLocaleDateString()}</div>
         </div>
         <div className="daily-summary-grid">
-          <div className="summary-item-small">
-            <div className="icon" style={{ background: '#FFF7ED', color: '#EA580C' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-            </div>
-            <div className="stack">
-              <span style={{ fontWeight: 700, fontSize: '1.25rem' }}>{stats.pending}</span>
-              <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Pedido pendente</span>
-            </div>
-          </div>
-          <div className="summary-item-small">
-            <div className="icon" style={{ background: '#EFF6FF', color: '#2563EB' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-            </div>
-            <div className="stack">
-              <span style={{ fontWeight: 700, fontSize: '1.25rem' }}>{stats.emAtendimento}</span>
-              <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Em atendimento</span>
-            </div>
-          </div>
-          <div className="summary-item-small">
-            <div className="icon" style={{ background: '#F0FDF4', color: '#16A34A' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-            </div>
-            <div className="stack">
-              <span style={{ fontWeight: 700, fontSize: '1.25rem' }}>{stats.finalizado}</span>
-              <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Finalizados</span>
-            </div>
-          </div>
-          <div className="summary-item-small">
-            <div className="icon" style={{ background: '#FEF2F2', color: '#DC2626' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
-            </div>
-            <div className="stack">
-              <span style={{ fontWeight: 700, fontSize: '1.25rem' }}>{stats.rejeitado}</span>
-              <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Rejeitados</span>
-            </div>
-          </div>
+          <StatItem 
+            label="Pedido pendente" 
+            count={stats.pending} 
+            background="#FFF7ED" 
+            color="#EA580C"
+            icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>}
+          />
+          <StatItem 
+            label="Em atendimento" 
+            count={stats.emAtendimento} 
+            background="#EFF6FF" 
+            color="#2563EB"
+            icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>}
+          />
+          <StatItem 
+            label="Finalizados" 
+            count={stats.finalizado} 
+            background="#F0FDF4" 
+            color="#16A34A"
+            icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+          />
+          <StatItem 
+            label="Rejeitados" 
+            count={stats.rejeitado} 
+            background="#FEF2F2" 
+            color="#DC2626"
+            icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>}
+          />
         </div>
       </div>
 
-      <div className="dashboard-main-grid" style={{ gridTemplateColumns: "1fr", gap: "2rem" }}>
-        {/* Main Section */}
-        <div className="dashboard-section" style={{ gap: "2rem" }}>
-          {/* Recent Activities */}
+      <div className="dashboard-main-grid">
+        <div className="dashboard-section">
           <div className="card">
             <div className="card-header">
-              <div className="card-title">Recentes</div>
+              <div className="card-title">Atividades Recentes</div>
               <NavLink className="btn small" to="/enviados">Ver histórico</NavLink>
             </div>
             <div className="table-wrapper">
@@ -191,30 +230,21 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(() => {
-                    const combined = [...received, ...sent];
-                    const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
-                    
-                    return unique
-                      .sort((a, b) => new Date(b.date) - new Date(a.date))
-                      .slice(0, 8)
-                      .map(d => {
-                        const st = normalizeStatus(d.status);
-                        const isPecas = user.sector === "Peças";
-                        const isTarget = d.targetSector === user.sector;
-                        const isNota = d.title.startsWith("[NOTA FISCAL]");
-                        
-                        // Lógica de avaliação:
-                        // 1. Se for Nota Fiscal: só quem é o destino pode avaliar
-                        // 2. Se for Pedido: 
-                        //    - Peças avalia se PENDENTE, APROVADO ou RECUSADO
-                        //    - Outro setor avalia se ENCAMINHADO e for o destino
-                        const canEvaluate = isNota 
-                          ? (isTarget && st === statuses.PENDENTE)
-                          : ((isPecas && (st === statuses.PENDENTE || st === statuses.APROVADO || st === statuses.RECUSADO)) || (isTarget && st === statuses.ENCAMINHADO));
+                  {loading ? (
+                    <TableSkeleton />
+                  ) : recentItems.length > 0 ? (
+                    recentItems.map(d => {
+                      const st = normalizeStatus(d.status);
+                      const isPecas = isPecasSector(user.sector);
+                      const isTarget = d.targetSector === user.sector || (!d.targetSector && isPecas);
+                      const isNota = d.title.startsWith("[NOTA FISCAL]");
+                      
+                      const canEvaluate = isNota 
+                        ? (isTarget && st === statuses.PENDENTE)
+                        : ((isPecas && (st === statuses.PENDENTE || st === statuses.APROVADO || st === statuses.RECUSADO)) || (isTarget && st === statuses.ENCAMINHADO));
 
-                        return (
-                          <tr key={d.id}>
+                      return (
+                        <tr key={d.id}>
                           <td data-label="Documento">
                             <div className="stack">
                               <span style={{ fontWeight: 600 }}>{d.title.replace("[NOTA FISCAL] ", "")}</span>
@@ -226,7 +256,7 @@ export default function Dashboard() {
                           <td data-label="Status"><span className={`status ${statusClass(d.status)}`}>{statusLabel(d.status)}</span></td>
                           <td data-label="Ações">
                             <NavLink 
-                              to={canEvaluate ? (d.title.startsWith("[NOTA FISCAL]") ? `/avaliar-nota/${d.id}` : `/avaliar/${d.id}`) : `/documento/${d.id}`} 
+                              to={canEvaluate ? (isNota ? `/avaliar-nota/${d.id}` : `/avaliar/${d.id}`) : `/documento/${d.id}`} 
                               className={`btn small ${canEvaluate ? "primary" : ""}`}
                               style={{ width: '100%' }}
                             >
@@ -234,10 +264,9 @@ export default function Dashboard() {
                             </NavLink>
                           </td>
                         </tr>
-                        );
-                      });
-                  })()}
-                  {[...received, ...sent].length === 0 && (
+                      );
+                    })
+                  ) : (
                     <tr>
                       <td colSpan="5" className="empty">Nenhuma atividade recente</td>
                     </tr>
@@ -246,32 +275,9 @@ export default function Dashboard() {
               </table>
             </div>
           </div>
-
-          {/* Notifications */}
-          <div className="card">
-            <div className="card-header">
-              <div className="card-title">Notificações {notifications.length > 0 && <span className="notification-badge" style={{ display: 'inline-flex', marginLeft: 8 }}>{notifications.length}</span>}</div>
-              <NavLink className="btn small" to="/notificacoes">Ver todas</NavLink>
-            </div>
-            <div className="notif-list">
-              {notifications.slice(0, 8).map(n => (
-                <NotificationItem
-                  key={n.id}
-                  title={n.documentTitle || "Documento"}
-                  status={n.newStatus}
-                  reviewerSector={n.reviewerSector}
-                  date={n.date}
-                  isNew={true}
-                />
-              ))}
-              {notifications.length === 0 && <div className="empty">Sem novas notificações</div>}
-            </div>
-          </div>
         </div>
       </div>
       </div>
-
-      {/* Footer removido - movido para o topo */}
     </>
   );
 }

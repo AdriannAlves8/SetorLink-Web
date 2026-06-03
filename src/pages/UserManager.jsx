@@ -95,8 +95,8 @@ export default function UserManager() {
         </PageToolbar>
 
       <div className="card page-panel">
-        <div className="table-wrapper">
-          <table className="table">
+        <div className="data-table-wrap">
+          <table className="table data-table">
             <thead>
               <tr>
                 <th>Usuário</th>
@@ -115,20 +115,20 @@ export default function UserManager() {
                 <tr><td colSpan="5" className="empty">Nenhum usuário nesta página.</td></tr>
               ) : currentUsers.map(u => (
                 <tr key={u.uid}>
-                  <td>
+                  <td data-label="Usuário">
                     <div className="stack">
                       <span style={{ fontWeight: 600 }}>{u.name}</span>
                       <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>{u.email}</span>
                     </div>
                   </td>
-                  <td>{u.setor || u.sector || "—"}</td>
-                  <td><span className="chip">{ROLE_INFO[u.role_id || u.role]?.nome || u.role_id || u.role || "—"}</span></td>
-                  <td>
+                  <td data-label="Setor">{u.setor || u.sector || "—"}</td>
+                  <td data-label="Perfil"><span className="chip">{ROLE_INFO[u.role_id || u.role]?.nome || u.role_id || u.role || "—"}</span></td>
+                  <td data-label="Status">
                     <span className={`status ${u.ativo ? "success" : "danger"}`}>
                       {u.ativo ? "Ativo" : "Bloqueado"}
                     </span>
                   </td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td data-label="Ações" style={{ textAlign: 'right' }}>
                     <div className="actions" style={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                       <button className="btn small" onClick={() => handleEdit(u)}>Editar</button>
                       <button 

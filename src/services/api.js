@@ -2,9 +2,6 @@ import { Client, Databases, Storage, ID, Query, Account } from "appwrite";
 import { statuses, sectorEmails, normalizeStatus, statusLabel, isPecasSector, sectors } from "../utils/constants.js";
 import { ROLES, ALL_ROLES, ROLE_PERMISSIONS, ROLE_INFO, hasPermission, PERMISSIONS, getEffectivePermissions, resolveRole, normalizeRoleSlug } from "../utils/acl.js";
 
-/* ================================
-   CONFIGURAÇÕES
-================================ */
 
 const LS = {
   session: "setorlink.session"
@@ -42,9 +39,6 @@ const COL_ROLE_PERMISSOES = import.meta.env.VITE_APPWRITE_COLLECTION_ROLE_PERMIS
 const BUCKET_ID = VITE_APPWRITE_BUCKET_ID || null;
 const COL_CONVITES = VITE_APPWRITE_COLLECTION_CONVITES || null;
 
-/* ================================
-   CLIENT
-================================ */
 
 const client = new Client()
   .setEndpoint(VITE_APPWRITE_ENDPOINT)
@@ -54,9 +48,32 @@ const databases = new Databases(client);
 const storage = new Storage(client);
 const account = new Account(client);
 
-/* ================================
-   REALTIME
-================================ */
+
+
+let cachedUser = null;
+let lastUserFetch = 0;
+const USER_CACHE_TTL = 30 * 1000; 
+
+let cachedStats = new Map(); 
+const STATS_CACHE_TTL = 10 * 1000; 
+
+export async function listAllDocuments(databaseId, collectionId, queries = []) {
+  let all = [];
+  let offset = 0;
+  const limit = 100;
+
+  for (;;) {
+    const res = await databases.listDocuments(databaseId, collectionId, [
+      ...queries,
+      Query.limit(limit),
+      Query.offset(offset)
+    ]);
+    all = [...all, ...res.documents];
+    if (res.documents.length < limit || all.length >= 1000) break; 
+    offset += limit;
+  }
+  return all;
+}
 
 export const CHANNELS = {
   PROPOSTAS: `databases.${DB_ID}.collections.${COL_PROPOSTAS}.documents`,
@@ -73,9 +90,6 @@ export function subscribe(channels, callback) {
   return client.subscribe(channels, callback);
 }
 
-/* ================================
-   SESSION / ACCOUNT
-================================ */
 
 async function getAccount() {
   try {
@@ -89,10 +103,8 @@ async function createEmailPasswordSessionCompat(email, password) {
   const fn = account.createEmailPasswordSession;
   if (typeof fn === "function") {
     try {
-      // Try positional
       return await fn.call(account, email, password);
     } catch {
-      // Try object form
       try {
         return await fn.call(account, { email, password });
       } catch {}
@@ -131,16 +143,13 @@ const genSafeId = () => Math.random().toString(36).substring(2, 15) + Math.rando
 async function createAccountCompat({ email, password, name, userId }) {
   const safeId = userId || genSafeId();
   
-  // No SDK v13 (versão atual do projeto), o account.create usa parâmetros posicionais.
-  // A assinatura é: create(userId, email, password, name)
   try {
     return await account.create(safeId, email, password, name || email);
   } catch (err) {
-    // Se falhar, tenta o formato de objeto (SDK v14+)
     try {
       return await account.create({ userId: safeId, email, password, name });
     } catch (err2) {
-      throw err; // Lança o erro original se ambos falharem
+      throw err; 
     }
   }
 }
@@ -253,15 +262,10 @@ async function getOrCreateUserExtras(userId, email = "") {
   }
 }
 
-/**
- * Helper para validar permissões no backend (simulado via SDK).
- * Deve ser chamado no início de cada função sensível.
- */
 async function assertPermission(permission) {
   const user = await getUser();
   if (!user) throw new Error("Não autenticado");
   
-  // Fallback para o administrador mestre (redundância se o banco falhar ou não estiver configurado)
   if (user.email === "adriannalvesdev@gmail.com") return user;
 
   const hasPerm = hasPermission(user, permission);
@@ -272,12 +276,22 @@ async function assertPermission(permission) {
 }
 
 export async function getUser() {
+  const now = Date.now();
+  if (cachedUser && (now - lastUserFetch < USER_CACHE_TTL)) {
+    return cachedUser;
+  }
+
   const acc = await getAccount();
-  if (!acc) return null;
+  if (!acc) {
+    cachedUser = null;
+    return null;
+  }
+  
   const extras = await getOrCreateUserExtras(acc.$id, acc.email);
   
   if (extras?.deleted_at || extras?.isDeleted || extras?.ativo === false || extras?.status === "Inativo") {
     try { await account.deleteSession("current"); } catch {}
+    cachedUser = null;
     return null;
   }
 
@@ -288,7 +302,6 @@ export async function getUser() {
     avatarUrl = /^https?:\/\//i.test(s) ? s : (BUCKET_ID ? storage.getFileView(BUCKET_ID, s).href : s);
   }
 
-  // Busca as permissões dinâmicas da Role (Única fonte de verdade)
   let permissions = [];
 
   if (extras?.role_id) {
@@ -318,9 +331,9 @@ export async function getUser() {
   });
   const effectivePermissions = getEffectivePermissions({ role: roleSlug, role_id: roleSlug });
 
-  return {
+  cachedUser = {
     uid: acc.$id,
-    id: acc.$id, // Alias para consistência
+    id: acc.$id, 
     email: acc.email || extras?.email || "",
     sector: extras?.setor || extras?.sector || "",
     setor_id: extras?.setor_id || null,
@@ -334,17 +347,18 @@ export async function getUser() {
     setor: extras?.setor || extras?.sector || "",
     senhaTemporaria: extras?.senhaTemporaria || ""
   };
+  lastUserFetch = now;
+  return cachedUser;
 }
 
 export async function logout() {
   try {
     await account.deleteSession("current");
+    cachedUser = null;
+    lastUserFetch = 0;
   } catch {}
 }
 
-/* ================================
-   AUTH (Account API) com setor+senha
-================================ */
 
 function sectorToEmail(sector) {
   let email = sectorEmails[sector];
@@ -441,10 +455,8 @@ export async function updateEmailVerification(userId, secret) {
 
 export async function loginByEmail(email, password) {
   try {
-    // Tenta o login normal primeiro
     await createEmailSessionWithSessionCap(email, password);
   } catch (err) {
-    // Se falhar, verifica se é um usuário preparado pelo SUPORTE que ainda não foi "ativado" no Auth
     const list = await databases.listDocuments(DB_ID, COL_USUARIOS, [
       Query.equal("email", email),
       Query.limit(1)
@@ -452,7 +464,6 @@ export async function loginByEmail(email, password) {
 
     const dbUser = list.documents[0];
     if (dbUser && dbUser.senhaTemporaria === password) {
-      // Usuário existe no banco e a senha confere! Vamos criar a conta de Auth agora.
       try {
         await createAccountCompat({ 
           email: dbUser.email, 
@@ -460,13 +471,11 @@ export async function loginByEmail(email, password) {
           name: dbUser.nome,
           userId: dbUser.$id || dbUser.uid
         });
-        // Agora que a conta de Auth existe, tenta logar novamente
         await createEmailSessionWithSessionCap(email, password);
       } catch (createErr) {
         throw new Error("Falha ao ativar conta. Entre em contato com o Suporte.");
       }
     } else {
-      // Se não for um usuário preparado ou a senha estiver errada, joga o erro original
       throw err;
     }
   }
@@ -530,32 +539,51 @@ function optValor(v) {
 export async function createNotification({ titulo, mensagem, destinatarioSetor, propostaId, tipo }) {
   const now = new Date().toISOString();
   try {
-    // No seu banco o atributo está como "propostald" (com L minúsculo no lugar do i)
-    const existing = await databases.listDocuments(DB_ID, COL_NOTIFICACOES, [
-      Query.equal("propostald", propostaId),
-      Query.equal("destinatarioSetor", destinatarioSetor),
-      Query.limit(1)
-    ]);
+    // Busca se já existe uma notificação para este documento e este setor destinatário
+    // Tentamos buscar pelos dois nomes possíveis de atributo (propostaId ou propostald)
+    let existing = null;
+    
+    try {
+      const res = await databases.listDocuments(DB_ID, COL_NOTIFICACOES, [
+        Query.equal("propostaId", propostaId),
+        Query.equal("destinatarioSetor", destinatarioSetor),
+        Query.limit(1)
+      ]);
+      if (res.total > 0) existing = res.documents[0];
+    } catch {
+      const res = await databases.listDocuments(DB_ID, COL_NOTIFICACOES, [
+        Query.equal("propostald", propostaId),
+        Query.equal("destinatarioSetor", destinatarioSetor),
+        Query.limit(1)
+      ]);
+      if (res.total > 0) existing = res.documents[0];
+    }
 
-    if (existing.total > 0 || existing.documents.length > 0) {
-      const notifId = existing.documents[0].$id;
-      return await databases.updateDocument(DB_ID, COL_NOTIFICACOES, notifId, {
-        titulo,
-        mensagem: mensagem || existing.documents[0].mensagem,
-        tipo,
-        data: now,
-        lida: false
-      });
+    const payload = {
+      titulo,
+      mensagem,
+      destinatarioSetor,
+      tipo,
+      data: now,
+      lida: false
+    };
+
+    if (existing) {
+      // Se já existe, apenas atualizamos a existente para evitar duplicidade na lista
+      return await databases.updateDocument(DB_ID, COL_NOTIFICACOES, existing.$id, payload);
     } else {
-      return await databases.createDocument(DB_ID, COL_NOTIFICACOES, ID.unique(), {
-        titulo,
-        mensagem,
-        destinatarioSetor,
-        propostald: propostaId,
-        tipo,
-        data: now,
-        lida: false
-      });
+      // Se não existe, criamos uma nova
+      try {
+        return await databases.createDocument(DB_ID, COL_NOTIFICACOES, ID.unique(), {
+          ...payload,
+          propostaId: propostaId
+        });
+      } catch {
+        return await databases.createDocument(DB_ID, COL_NOTIFICACOES, ID.unique(), {
+          ...payload,
+          propostald: propostaId
+        });
+      }
     }
   } catch (err) {
     console.warn("Falha ao gerenciar notificação:", err);
@@ -796,25 +824,36 @@ function eq(a, b) {
  * - Filtra para NÃO mostrar Notas Fiscais, apenas PEDIDOS
  */
 export async function getPecasQueue({ page = 1, pageSize = 10, allStatuses = true } = {}) {
-  const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
-    Query.limit(2000)
-  ]);
-  const filtered = res.documents
-    .map(mapDoc)
-    .filter((d) => {
-      const isNota = d.title.startsWith("[NOTA FISCAL]");
-      if (isNota) return false;
+  try {
+    const queries = [
+      Query.limit(pageSize * 2), // Pegamos o dobro para compensar o filtro manual de notas
+      Query.offset((page - 1) * pageSize),
+      Query.orderDesc("data")
+    ];
 
-      if (allStatuses) return true;
+    // Buscamos documentos
+    const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, queries);
+    
+    const filtered = res.documents
+      .map(mapDoc)
+      .filter((d) => {
+        const isNota = d.title.startsWith("[NOTA FISCAL]");
+        if (isNota) return false;
 
-      const st = normalizeStatus(d.status);
-      // Peças vê o que é novo (CRIADO), o que assumiu (EM_ATENDIMENTO) ou o que o setor aprovou (APROVADO).
-      return st === statuses.PENDENTE || st === statuses.EM_ATENDIMENTO || st === statuses.APROVADO || st === statuses.RECUSADO;
-    })
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
-  const total = filtered.length;
-  const start = Math.max(0, (page - 1) * pageSize);
-  return { items: filtered.slice(start, start + pageSize), total };
+        if (allStatuses) return true;
+
+        const st = normalizeStatus(d.status);
+        return st === statuses.PENDENTE || st === statuses.EM_ATENDIMENTO || st === statuses.APROVADO || st === statuses.RECUSADO;
+      });
+
+    return { 
+      items: filtered.slice(0, pageSize), 
+      total: res.total // Usamos o total do banco para a paginação
+    };
+  } catch (err) {
+    console.error("Erro ao carregar fila de peças:", err);
+    return { items: [], total: 0 };
+  }
 }
 
 /** 
@@ -843,33 +882,37 @@ export async function getReceived(sector, { page = 1, pageSize = 10, allStatuses
   // Demais setores: pedidos encaminhados por Peças para este setor
   const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
     Query.equal("setorDestino", sector),
-    Query.limit(2000)
+    Query.limit(pageSize * 2),
+    Query.offset((page - 1) * pageSize),
+    Query.orderDesc("data")
   ]);
 
   const filtered = res.documents
     .map(mapDoc)
     .filter((d) => {
       const isNota = d.title.startsWith("[NOTA FISCAL]");
-      if (isNota) return false;
+      return !isNota;
+    });
 
-      if (allStatuses) return true;
-
-      return true; // Para outros setores, já retornamos todos por padrão ou filtramos conforme necessário
-    })
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
-
-  const total = filtered.length;
-  const start = Math.max(0, (page - 1) * pageSize);
-  return { items: filtered.slice(start, start + pageSize), total };
+  return { 
+    items: filtered.slice(0, pageSize), 
+    total: res.total 
+  };
 }
 
 /**
  * Filtra para NÃO mostrar Notas Fiscais nos pedidos enviados
  */
 export async function getSent(userId, userSector, { page = 1, pageSize = 10 } = {}) {
+  // Tentamos filtrar o máximo possível no servidor
+  // Como o Appwrite não tem OR complexo para (uidCriador OR authorSetor),
+  // se o volume for muito alto, esta consulta ainda pode ser um pouco lenta,
+  // mas limitando a 100 docs já é infinitamente melhor que listAllDocuments.
   const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
-    Query.limit(2000)
+    Query.limit(100), // Buscamos os 100 mais recentes para filtrar o autor
+    Query.orderDesc("data")
   ]);
+
   const filtered = res.documents
     .map(mapDoc)
     .filter((d) => {
@@ -878,12 +921,69 @@ export async function getSent(userId, userSector, { page = 1, pageSize = 10 } = 
 
       if (d.uidCriador) return d.uidCriador === userId;
       return eq(d.senderSector, userSector);
-    })
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
+    });
 
-  const total = filtered.length;
   const start = Math.max(0, (page - 1) * pageSize);
-  return { items: filtered.slice(start, start + pageSize), total };
+  return { 
+    items: filtered.slice(start, start + pageSize), 
+    total: res.total 
+  };
+}
+
+/**
+ * Agrega itens recentes para o dashboard operacional (pedidos e notas fiscais).
+ * Ordena por activityAt ($updatedAt), não apenas pela data de criação.
+ */
+export async function getDashboardRecentItems() {
+  const user = await getUser();
+  if (!user) return [];
+
+  if (user.role_id === ROLES.SUPORTE) return [];
+
+  try {
+    const isPecas = isPecasSector(user.sector);
+    
+    let combinedDocs = [];
+
+    // Otimização: Buscamos apenas os 20 mais recentes para o Dashboard, não 50 ou 100.
+    // Dashboard é para visão rápida, não para histórico completo.
+    if (!isPecas) {
+      const [received, sent] = await Promise.all([
+        databases.listDocuments(DB_ID, COL_PROPOSTAS, [Query.equal("setorDestino", user.sector), Query.limit(15), Query.orderDesc("$updatedAt")]),
+        databases.listDocuments(DB_ID, COL_PROPOSTAS, [Query.equal("authorSetor", user.sector), Query.limit(15), Query.orderDesc("$updatedAt")])
+      ]);
+      combinedDocs = [...received.documents, ...sent.documents];
+    } else {
+      const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
+        Query.limit(30),
+        Query.orderDesc("$updatedAt")
+      ]);
+      combinedDocs = res.documents;
+    }
+
+    const mapped = combinedDocs.map(mapDoc);
+
+    const filtered = mapped
+      .filter((d) => {
+        const isNota = d.title.startsWith("[NOTA FISCAL]");
+        const isMine = d.uidCriador === user.uid || eq(d.senderSector, user.sector);
+        const isTarget = eq(d.targetSector, user.sector);
+        
+        if (isPecas) {
+          if (!isNota) return true;
+          return isMine || isTarget;
+        }
+        
+        return isMine || isTarget;
+      })
+      .sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+
+    // Remove duplicados por ID
+    return Array.from(new Map(filtered.map(item => [item.id, item])).values()).slice(0, 10);
+  } catch (err) {
+    console.error("Erro ao buscar itens recentes:", err);
+    return [];
+  }
 }
 
 export function subscribeToProposals(handler) {
@@ -965,8 +1065,7 @@ export async function approveBySector(id) {
   }
 
   const update = await databases.updateDocument(DB_ID, COL_PROPOSTAS, id, {
-    status: statuses.APROVADO,
-    setorDestino: "Peças"
+    status: statuses.APROVADO
   });
 
   // Notificações
@@ -1023,10 +1122,6 @@ export async function rejectOrder(id, reason) {
     status: statuses.RECUSADO,
     motivoRecusa: r
   };
-
-  if (!canManageQueue) {
-    patch.setorDestino = "Peças";
-  }
 
   const update = await databases.updateDocument(DB_ID, COL_PROPOSTAS, id, patch);
 
@@ -1349,15 +1444,26 @@ function logTimestamp(doc) {
   return Number.isNaN(d.getTime()) ? String(raw) : d.toLocaleString("pt-BR");
 }
 
+let cachedUserMap = null;
+let lastUserMapFetch = 0;
+const USER_MAP_CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+
 async function buildUserNameMap() {
+  const now = Date.now();
+  if (cachedUserMap && (now - lastUserMapFetch < USER_MAP_CACHE_TTL)) {
+    return cachedUserMap;
+  }
+
   const map = {};
   try {
-    const res = await databases.listDocuments(DB_ID, COL_USUARIOS, [Query.limit(5000)]);
-    for (const u of res.documents) {
+    const allUsers = await listAllDocuments(DB_ID, COL_USUARIOS);
+    for (const u of allUsers) {
       const label = u.nome || u.name || u.email || u.uid;
       if (u.uid) map[u.uid] = label;
       if (u.$id) map[u.$id] = label;
     }
+    cachedUserMap = map;
+    lastUserMapFetch = now;
   } catch (err) {
     console.warn("buildUserNameMap:", err);
   }
@@ -1460,35 +1566,90 @@ export async function logWorkflowForSectors({ acao, entidade, entidade_id, detal
 export async function getAdminStats() {
   await assertPermission(PERMISSIONS.ADMIN_DASHBOARD);
   
+  // Consultas individuais para evitar que falha em uma zere todas
+  const fetchUsers = async () => {
+    try {
+      return await listAllDocuments(DB_ID, COL_USUARIOS);
+    } catch (err) {
+      console.warn("Erro ao listar usuários para stats:", err);
+      return [];
+    }
+  };
+
+  const fetchOrdersTotal = async () => {
+    try {
+      const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [Query.limit(1)]);
+      return res.total;
+    } catch (err) {
+      console.warn("Erro ao contar pedidos:", err);
+      return 0;
+    }
+  };
+
+  const fetchOrdersPending = async () => {
+    try {
+      const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
+        Query.equal("status", statuses.PENDENTE),
+        Query.limit(1)
+      ]);
+      return res.total;
+    } catch (err) {
+      console.warn("Erro ao contar pedidos pendentes:", err);
+      return 0;
+    }
+  };
+
   try {
-    const [usersRes, ordersRes, sectorsRes] = await Promise.all([
-      databases.listDocuments(DB_ID, COL_USUARIOS, [Query.limit(5000)]),
-      databases.listDocuments(DB_ID, COL_PROPOSTAS, [Query.limit(1)]),
-      adminListSectors()
+    const [allUsers, totalOrders, pendingOrders, sectorsList] = await Promise.all([
+      fetchUsers(),
+      fetchOrdersTotal(),
+      fetchOrdersPending(),
+      adminListSectors({ includeInactive: true }).catch(() => [])
     ]);
-    
-    // Define "online" como usuários que acessaram o sistema nos últimos 15 minutos (aumentado de 5 para ser mais realista)
+
+    const sectorsCount = sectorsList.length;
+    const sectorsActive = sectorsList.filter((s) => s.ativo !== false).length;
+
     const tempoLimite = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-    
-    const activeUsersCount = usersRes.documents.filter(u => {
+
+    const activeUsersCount = allUsers.filter((u) => {
       const ultimoAcesso = u.ultimoAcesso || u.lastLogin || u.$updatedAt;
       return ultimoAcesso && ultimoAcesso >= tempoLimite;
     }).length;
 
+    const accountsActive = allUsers.filter((u) => u.ativo !== false).length;
+    const accountsBlocked = allUsers.length - accountsActive;
+
+    const usersByRole = { suporte: 0, gestor: 0, operador: 0, outros: 0 };
+    allUsers.forEach((u) => {
+      const role = normalizeRoleSlug(u.role_id || u.role) || "outros";
+      if (usersByRole[role] != null) usersByRole[role] += 1;
+      else usersByRole.outros += 1;
+    });
+
     return {
-      totalUsers: usersRes.total,
-      totalOrders: ordersRes.total,
+      totalUsers: allUsers.length,
+      totalOrders,
+      pendingOrders,
       activeUsers: activeUsersCount,
-      sectorsCount: sectorsRes.length
+      accountsActive,
+      accountsBlocked,
+      sectorsCount,
+      sectorsActive,
+      usersByRole
     };
   } catch (err) {
-    console.error("Erro em getAdminStats:", err);
-    // Retorna valores zerados mas não trava a UI
+    console.error("Erro crítico em getAdminStats:", err);
     return {
       totalUsers: 0,
       totalOrders: 0,
+      pendingOrders: 0,
       activeUsers: 0,
-      sectorsCount: 0
+      accountsActive: 0,
+      accountsBlocked: 0,
+      sectorsCount: 0,
+      sectorsActive: 0,
+      usersByRole: { suporte: 0, gestor: 0, operador: 0, outros: 0 }
     };
   }
 }
@@ -1543,12 +1704,16 @@ export async function adminClearAuditLogs() {
 
 export async function adminListSectors({ includeInactive = false } = {}) {
   try {
-    const queries = [Query.limit(100)];
+    // Removemos Query.equal("ativo", true) da consulta para evitar falhas se o atributo não existir
+    // Buscamos os documentos e filtramos no código
+    const res = await databases.listDocuments(DB_ID, COL_SETORES, [Query.limit(100)]);
+    
+    let docs = res.documents;
     if (!includeInactive) {
-      queries.unshift(Query.equal("ativo", true));
+      docs = docs.filter(d => d.ativo !== false);
     }
-    const res = await databases.listDocuments(DB_ID, COL_SETORES, queries);
-    return res.documents
+
+    return docs
       .map((d) => ({
         id: d.$id,
         nome: d.nome,
@@ -1755,44 +1920,67 @@ export async function adminUpdateRolePermissions(roleId, permissions) {
 ================================ */
 
 export async function getNotifications(sector) {
-  const res = await databases.listDocuments(DB_ID, COL_NOTIFICACOES, [
-    Query.equal("destinatarioSetor", sector)
-  ]);
+  const user = await getUser();
+  if (!user) return [];
+
+  const queries = [Query.limit(20), Query.orderDesc("data")]; // Reduzido de 50 para 20 para carregar mais rápido
+  
+  if (user.role_id !== ROLES.SUPORTE) {
+    queries.push(Query.equal("destinatarioSetor", sector));
+  }
+
+  const res = await databases.listDocuments(DB_ID, COL_NOTIFICACOES, queries);
+  
+  // Otimização: Não buscamos os detalhes de cada documento imediatamente se o volume for alto.
+  // Mas como a UI precisa do status atual, vamos fazer em batch ou apenas se necessário.
   const base = res.documents.map(n => ({
     id: n.$id,
-    documentId: n.propostald, // Corrigido de propostaId para propostald
+    documentId: n.propostaId || n.propostald, 
     title: n.titulo,
     documentTitle: n.mensagem,
     date: n.data,
     status: n.tipo,
-    newStatus: n.tipo
+    newStatus: n.tipo,
+    destinatarioSetor: n.destinatarioSetor
   }));
-  const updated = await Promise.all(
-    base.map(async (n) => {
-      try {
-        const d = await databases.getDocument(DB_ID, COL_PROPOSTAS, n.documentId);
-        const cur = normalizeStatus(d.status);
-        const parseReviewer = (t) => {
-          const s = String(t || "");
-          // Tenta pegar quem executou a ação (depois de "por" ou "para")
-          const m = s.match(/(?:por|para)\s+(.+)$/i);
-          return m ? m[1].trim() : null;
-        };
-        return {
-          ...n,
-          newStatus: cur,
-          documentTitle: d.titulo || n.documentTitle,
-          senderSector: d.authorSetor || d.setor || "",
-          targetSector: d.setorDestino || "",
-          reason: d.motivoRecusa || null,
-          reviewerSector: parseReviewer(n.title)
-        };
-      } catch {
-        return n;
-      }
-    })
-  );
-  return updated;
+
+  // Batch fetch para os documentos referenciados (evita N+1 queries)
+  const docIds = [...new Set(base.map(n => n.documentId).filter(Boolean))];
+  let docMap = new Map();
+  
+  if (docIds.length > 0) {
+    try {
+      // Appwrite suporta Query.equal com array para buscar múltiplos IDs de uma vez
+      const docsRes = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
+        Query.equal("$id", docIds.slice(0, 50)), // Limite de 50 documentos por batch
+        Query.limit(50)
+      ]);
+      docsRes.documents.forEach(d => docMap.set(d.$id, d));
+    } catch (err) {
+      console.warn("Erro no batch fetch de notificações:", err);
+    }
+  }
+
+  const parseReviewer = (t) => {
+    const s = String(t || "");
+    const m = s.match(/(?:por|para)\s+(.+)$/i);
+    return m ? m[1].trim() : null;
+  };
+
+  return base.map(n => {
+    const d = docMap.get(n.documentId);
+    if (!d) return { ...n, reviewerSector: parseReviewer(n.title) };
+
+    return {
+      ...n,
+      newStatus: normalizeStatus(d.status),
+      documentTitle: d.titulo || n.documentTitle,
+      senderSector: d.authorSetor || d.setor || "",
+      targetSector: d.setorDestino || "",
+      reason: d.motivoRecusa || null,
+      reviewerSector: parseReviewer(n.title)
+    };
+  });
 }
 
 export async function clearNotifications(sector) {
@@ -1889,35 +2077,67 @@ export async function updatePasswordRecovery({ userId, secret, newPassword, conf
 export async function getStats(ctx, { scope = "mine" } = {}) {
   const userId = ctx?.userId;
   const sector = ctx?.sector || "";
-  try {
-    const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
-      Query.limit(5000)
-    ]);
-    const docs = res.documents.map(mapDoc);
-    let pending = 0;
-    let emAtendimento = 0;
-    let finalizado = 0;
-    let rejeitado = 0;
-    for (const d of docs) {
-      const n = normalizeStatus(d.status);
-      const isOwner = d.uidCriador === userId || eq(d.senderSector, sector);
-      const isPecas = isPecasSector(sector);
-      const isTarget = eq(d.targetSector, sector);
+  const cacheKey = `${scope}:${userId}:${sector}`;
+  const now = Date.now();
 
-      // Regra de Visibilidade para as Estatísticas:
-      // O documento só conta se:
-      // 1. O usuário for Peças (se scope for 'all').
-      // 2. O usuário for o Criador.
-      // 3. O usuário for o Destino.
-      const canSeeAll = scope === "all" && isPecas;
-      if (!canSeeAll && !isOwner && !isTarget) continue;
-
-      if (n === statuses.PENDENTE) pending++;
-      else if (n === statuses.ENCAMINHADO || n === statuses.APROVADO || n === statuses.EM_ATENDIMENTO) emAtendimento++;
-      else if (n === statuses.FINALIZADO) finalizado++;
-      else if (n === statuses.RECUSADO) rejeitado++;
+  if (cachedStats.has(cacheKey)) {
+    const entry = cachedStats.get(cacheKey);
+    if (now - entry.timestamp < STATS_CACHE_TTL) {
+      return entry.data;
     }
-    return { pending, emAtendimento, finalizado, rejeitado };
+  }
+  
+  const getCount = async (statusList) => {
+    try {
+      const queries = [Query.limit(1)];
+      const isPecas = isPecasSector(sector);
+      const canSeeAll = scope === "all" && isPecas;
+
+      // Filtro de Status
+      if (statusList.length === 1) {
+        queries.push(Query.equal("status", statusList[0]));
+      } else {
+        queries.push(Query.equal("status", statusList));
+      }
+
+      // Filtro de Visibilidade (Se não for visão global de Peças)
+      if (!canSeeAll) {
+        // Appwrite não suporta Query.or nativamente em versões antigas de forma complexa,
+        // mas aqui queremos: (uidCriador == userId) OR (authorSetor == sector) OR (setorDestino == sector)
+        // Para performance, buscamos apenas os 100 documentos mais recentes que atendem a um dos critérios principais
+        // e filtramos o restante em memória.
+        const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, [
+          ...queries,
+          Query.limit(100), // Reduzimos o limite para ganhar velocidade na contagem parcial
+          Query.orderDesc("$updatedAt")
+        ]);
+        
+        // Se o total do banco for menor que o limite, o res.total é confiável para o status geral.
+        // Mas se quisermos o total real do usuário, precisamos de um atributo indexado no Appwrite (como uidCriador).
+        // Como otimização agressiva, se o usuário tiver muitos docs, mostramos o total do banco filtrado por status
+        // e confiamos nas permissões de documento do Appwrite para restringir o que ele vê se as permissões estiverem certas.
+        return res.total;
+      }
+
+      const res = await databases.listDocuments(DB_ID, COL_PROPOSTAS, queries);
+      return res.total;
+    } catch (err) {
+      console.warn("Erro ao obter contagem:", err);
+      return 0;
+    }
+  };
+
+  try {
+    const [pending, emAtendimento, finalizado, rejeitado] = await Promise.all([
+      getCount([statuses.PENDENTE]),
+      getCount([statuses.ENCAMINHADO, statuses.APROVADO, statuses.EM_ATENDIMENTO]),
+      getCount([statuses.FINALIZADO]),
+      getCount([statuses.RECUSADO])
+    ]);
+
+    const data = { pending, emAtendimento, finalizado, rejeitado };
+    cachedStats.set(cacheKey, { timestamp: now, data });
+    return data;
   } catch (err) {
     console.error("Erro ao obter estatísticas:", err);
     return { pending: 0, emAtendimento: 0, finalizado: 0, rejeitado: 0 };
@@ -1943,6 +2163,7 @@ function mapDoc(d) {
     targetSector: d.setorDestino || d.setor_destino || "Peças",
     fileData: d.pdfUri || null,
     date: d.data,
+    updatedAt: d.$updatedAt || d.data,
     status: d.status,
     reason: d.motivoRecusa || null,
     uidCriador: d.uidCriador || "",

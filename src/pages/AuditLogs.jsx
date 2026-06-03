@@ -1,8 +1,23 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import Header from "../components/Header.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { ActivityIcon } from "../components/Icons.jsx";
 import * as api from "../services/api.js";
+
+// Otimização: Componente de linha memoizado para tabelas grandes
+const LogRow = React.memo(({ log }) => (
+  <tr key={log.id}>
+    <td data-label="Data/Hora" className="audit-cell-time">{log.time}</td>
+    <td data-label="Setor">{log.sector || "—"}</td>
+    <td data-label="Ação">
+      <span className="chip primary" title={log.action}>
+        {log.actionLabel}
+      </span>
+    </td>
+    <td data-label="Detalhes" className="audit-cell-details">{log.details}</td>
+    <td data-label="Responsável">{log.user}</td>
+  </tr>
+));
 
 export default function AuditLogs() {
   const { user } = useAuth();
@@ -10,34 +25,40 @@ export default function AuditLogs() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  const [displayCount, setDisplayCount] = useState(50); // Virtualização simples: carrega mais ao rolar
 
-  const fetchLogs = async () => {
-    setLoading(true);
+  const fetchLogs = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     setError(null);
     try {
-      const res = await api.listAuditLogs({ limit: 200 });
+      const res = await api.listAuditLogs({ limit: 300 }); // Buscamos mais, mas exibimos aos poucos
       setLogs(res);
     } catch (err) {
       console.error("Erro ao buscar logs:", err);
       setError(err.message || "Não foi possível carregar o histórico.");
       setLogs([]);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchLogs();
 
     if (api.CHANNELS.LOGS) {
-      const unsubscribe = api.subscribe(api.CHANNELS.LOGS, (payload) => {
-        if (payload.events?.some((e) => e.includes(".documents."))) {
-          fetchLogs();
-        }
-      });
-      return () => unsubscribe();
+      let timeout;
+      const handleUpdate = () => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => fetchLogs(false), 5000);
+      };
+
+      const unsubscribe = api.subscribe(api.CHANNELS.LOGS, handleUpdate);
+      return () => {
+        unsubscribe();
+        clearTimeout(timeout);
+      };
     }
-  }, []);
+  }, [fetchLogs]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -52,6 +73,18 @@ export default function AuditLogs() {
         log.sector?.toLowerCase().includes(q)
     );
   }, [logs, search]);
+
+  // "Virtualização" simples por fatiamento de array
+  const visibleLogs = useMemo(() => filtered.slice(0, displayCount), [filtered, displayCount]);
+
+  const handleScroll = (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollHeight - scrollTop <= clientHeight + 100) {
+      if (displayCount < filtered.length) {
+        setDisplayCount(prev => prev + 50);
+      }
+    }
+  };
 
   const handleClearLogs = async () => {
     if (!window.confirm("Tem certeza que deseja limpar todo o histórico? Esta ação não pode ser desfeita.")) {
@@ -118,8 +151,8 @@ export default function AuditLogs() {
             </div>
           )}
 
-          <div className="table-wrapper">
-            <table className="table">
+          <div className="data-table-wrap" onScroll={handleScroll} style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+            <table className="table data-table">
               <thead>
                 <tr>
                   <th>Data/Hora</th>
@@ -143,19 +176,19 @@ export default function AuditLogs() {
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((log) => (
-                    <tr key={log.id}>
-                      <td className="audit-cell-time">{log.time}</td>
-                      <td>{log.sector || "—"}</td>
-                      <td>
-                        <span className="chip primary" title={log.action}>
-                          {log.actionLabel}
-                        </span>
-                      </td>
-                      <td className="audit-cell-details">{log.details}</td>
-                      <td>{log.user}</td>
-                    </tr>
-                  ))
+                  <>
+                    {visibleLogs.map((log) => (
+                      <LogRow key={log.id} log={log} />
+                    ))}
+                    {displayCount < filtered.length && (
+                      <tr>
+                        <td colSpan={5} className="empty" style={{ padding: '1rem' }}>
+                          <div className="loading-spinner small" style={{ margin: '0 auto' }} />
+                          Carregando mais...
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 )}
               </tbody>
             </table>

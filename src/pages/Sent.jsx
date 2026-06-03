@@ -449,7 +449,7 @@ export default function Sent({ compose = false }) {
 
           <div className="card col-12">
             <div className="table-container">
-              <table className="table">
+              <table className="table table--stacked">
                 <thead>
                   <tr>
                     <th>Título</th>
@@ -463,28 +463,28 @@ export default function Sent({ compose = false }) {
                 <tbody>
                   {loadingList && Array.from({ length: 6 }).map((_, i) => (
                     <tr key={`skeleton-${i}`}>
-                      <td><div className="skeleton" style={{ width: 160 }} /></td>
-                      <td><div className="skeleton" style={{ width: 100 }} /></td>
-                      <td><div className="skeleton" style={{ width: 100 }} /></td>
-                      <td><div className="skeleton" style={{ width: 140 }} /></td>
-                      <td><div className="skeleton" style={{ width: 80 }} /></td>
-                      <td><div className="skeleton" style={{ width: 100 }} /></td>
+                      <td data-label="Título"><div className="skeleton" style={{ width: 160 }} /></td>
+                      <td data-label="Remetente"><div className="skeleton" style={{ width: 100 }} /></td>
+                      <td data-label="Destino"><div className="skeleton" style={{ width: 100 }} /></td>
+                      <td data-label="Data"><div className="skeleton" style={{ width: 140 }} /></td>
+                      <td data-label="Status"><div className="skeleton" style={{ width: 80 }} /></td>
+                      <td data-label="Ações"><div className="skeleton" style={{ width: 100 }} /></td>
                     </tr>
                   ))}
                   {!loadingList && filteredDocs.map((d) => (
                     <tr key={d.id}>
-                      <td>{d.title}</td>
-                      <td>{d.senderSector}</td>
-                      <td>{d.targetSector || "Peças"}</td>
-                      <td>
+                      <td data-label="Título">{d.title}</td>
+                      <td data-label="Remetente">{d.senderSector}</td>
+                      <td data-label="Destino">{d.targetSector || "Peças"}</td>
+                      <td data-label="Data">
                         {new Date(d.date).toLocaleString()}
                       </td>
-                      <td>
+                      <td data-label="Status">
                         <span className={`status ${statusClass(d.status)}`}>
                           {statusLabel(d.status)}
                         </span>
                       </td>
-                      <td>
+                      <td data-label="Ações">
                         <NavLink className="btn" to={`/documento/${d.id}`}>Detalhes</NavLink>
 
                         {canDeleteRow(d) && (

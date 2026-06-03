@@ -23,9 +23,8 @@ export const PERMISSIONS = {
   VIEW_SENT: "orders.view_sent",
   VIEW_RECEIVED: "orders.view_received",
   /** Fila Pedidos para Atender (Peças ou encaminhados ao setor) — todos exceto Suporte */
-  VIEW_ATTEND_QUEUE: "orders.view_attend_queue",
-  EVALUATE_ORDER: "orders.evaluate",
   ATTEND_ORDER: "orders.attend",
+  EVALUATE_ORDER: "orders.evaluate",
   DELETE_PENDING: "orders.delete_pending",
 
   CREATE_NOTA: "notas.create",
@@ -51,7 +50,6 @@ export const ROLE_PERMISSIONS = {
     PERMISSIONS.CREATE_ORDER,
     PERMISSIONS.VIEW_SENT,
     PERMISSIONS.VIEW_RECEIVED,
-    PERMISSIONS.VIEW_ATTEND_QUEUE,
     PERMISSIONS.EVALUATE_ORDER,
     PERMISSIONS.ATTEND_ORDER,
     PERMISSIONS.DELETE_PENDING,
@@ -65,7 +63,6 @@ export const ROLE_PERMISSIONS = {
   [ROLES.OPERADOR]: [
     PERMISSIONS.CREATE_ORDER,
     PERMISSIONS.VIEW_SENT,
-    PERMISSIONS.VIEW_ATTEND_QUEUE,
     PERMISSIONS.EVALUATE_ORDER,
     PERMISSIONS.ATTEND_ORDER,
     PERMISSIONS.VIEW_NOTA_RECEIVED,

@@ -269,26 +269,11 @@ export default function Profile() {
                 )}
               </div>
 
-              {/* BOTÕES CORRIGIDOS */}
-              <div
-                className="profile-actions"
-                style={{
-                  display: "flex",
-                  justifyContent: "flex-end",
-                  gap: "12px",
-                  marginTop: "24px",
-                  flexWrap: "wrap",
-                  width: "100%",
-                }}
-              >
-
+              <div className="profile-actions">
                 <button
                   type="button"
                   className="btn"
                   onClick={() => setHelpdeskOpen(true)}
-                  style={{
-                    minWidth: "220px",
-                  }}
                 >
                   Solicitar alteração de senha
                 </button>
@@ -298,14 +283,9 @@ export default function Profile() {
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn primary"
-                  style={{
-                    minWidth: "220px",
-                    textAlign: "center",
-                  }}
                 >
                   Abrir Helpdesk GS
                 </a>
-
               </div>
 
             </div>

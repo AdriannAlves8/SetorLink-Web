@@ -82,8 +82,8 @@ export default function SectorManager() {
         </section>
 
         <div className="card sectors-panel">
-          <div className="table-wrapper">
-            <table className="table">
+          <div className="data-table-wrap">
+            <table className="table data-table">
               <thead>
                 <tr>
                   <th>Setor</th>
@@ -106,16 +106,16 @@ export default function SectorManager() {
                 ) : (
                   sectors.map((s) => (
                     <tr key={s.id}>
-                      <td>
+                      <td data-label="Setor">
                         <span className="sectors-table__name">{s.nome}</span>
                       </td>
-                      <td>{s.email || <span className="sectors-table__muted">—</span>}</td>
-                      <td>
+                      <td data-label="E-mail de notificação">{s.email || <span className="sectors-table__muted">—</span>}</td>
+                      <td data-label="Status">
                         <span className={`status ${s.ativo !== false ? "success" : "danger"}`}>
                           {s.ativo !== false ? "Ativo" : "Inativo"}
                         </span>
                       </td>
-                      <td style={{ textAlign: "right" }}>
+                      <td data-label="Ações" style={{ textAlign: "right" }}>
                         <button type="button" className="btn small" onClick={() => handleEdit(s)}>
                           Editar
                         </button>

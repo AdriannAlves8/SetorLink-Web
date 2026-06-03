@@ -26,6 +26,7 @@ export default function DocumentDetail() {
         
         // Regra de Visibilidade dinâmica:
         // 1. Setor Peças sempre vê.
+    
         // 2. O criador do pedido (uidCriador) sempre vê.
         // 3. O setor de destino (setorDestino) só vê se o status for ENCAMINHADO.
         const canPecasQueue =
@@ -163,26 +164,26 @@ export default function DocumentDetail() {
             
             <div className="stack" style={{ marginTop: 8, padding: "12px", background: "rgba(0,0,0,0.02)", borderRadius: 12, border: "1px solid var(--border)" }}>
               <div style={{ fontWeight: 700, fontSize: "0.8rem", color: "var(--muted)", marginBottom: 8, letterSpacing: "0.05rem" }}>DADOS DO PEDIDO</div>
-              <div className="stack" style={{ gap: 6 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem" }}>
-                  <span style={{ color: "var(--muted)" }}>Produto:</span>
-                  <span style={{ fontWeight: 500, textAlign: "right" }}>{doc.nomeProduto || "—"}</span>
+              <div className="stack" style={{ gap: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem", flexWrap: "wrap", gap: "4px" }}>
+                  <span style={{ color: "var(--muted)", minWidth: "80px" }}>Produto:</span>
+                  <span style={{ fontWeight: 500, textAlign: "right", flex: 1, minWidth: "120px" }}>{doc.nomeProduto || "—"}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem" }}>
-                  <span style={{ color: "var(--muted)" }}>Código:</span>
-                  <span style={{ fontWeight: 500, textAlign: "right" }}>{doc.codigoProduto || "—"}</span>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem", flexWrap: "wrap", gap: "4px" }}>
+                  <span style={{ color: "var(--muted)", minWidth: "80px" }}>Código:</span>
+                  <span style={{ fontWeight: 500, textAlign: "right", flex: 1, minWidth: "120px" }}>{doc.codigoProduto || "—"}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem" }}>
-                  <span style={{ color: "var(--muted)" }}>Finalidade:</span>
-                  <span style={{ fontWeight: 500, textAlign: "right" }}>{doc.finalidade || "—"}</span>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem", flexWrap: "wrap", gap: "4px" }}>
+                  <span style={{ color: "var(--muted)", minWidth: "80px" }}>Finalidade:</span>
+                  <span style={{ fontWeight: 500, textAlign: "right", flex: 1, minWidth: "120px" }}>{doc.finalidade || "—"}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem" }}>
-                  <span style={{ color: "var(--muted)" }}>Controle:</span>
-                  <span style={{ fontWeight: 500, textAlign: "right" }}>{doc.recorrente ? "Recorrente" : "Único"}</span>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem", flexWrap: "wrap", gap: "4px" }}>
+                  <span style={{ color: "var(--muted)", minWidth: "80px" }}>Controle:</span>
+                  <span style={{ fontWeight: 500, textAlign: "right", flex: 1, minWidth: "120px" }}>{doc.recorrente ? "Recorrente" : "Único"}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "1rem", marginTop: 4, paddingTop: 4, borderTop: "1px dashed var(--border)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "1rem", marginTop: 4, paddingTop: 8, borderTop: "1px dashed var(--border)", flexWrap: "wrap", gap: "4px" }}>
                   <span style={{ fontWeight: 600 }}>Valor:</span>
-                  <span style={{ fontWeight: 700, color: "var(--primary)" }}>
+                  <span style={{ fontWeight: 700, color: "var(--primary)", flex: 1, textAlign: "right" }}>
                     {doc.valor ? `R$ ${doc.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}
                   </span>
                 </div>

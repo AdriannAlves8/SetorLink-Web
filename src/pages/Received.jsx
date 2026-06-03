@@ -148,7 +148,7 @@ export default function Received() {
             <span className="chip">{filtered.length} pedido(s)</span>
           </div>
           <div className="table-container">
-            <table className="table">
+            <table className="table table--stacked">
               <thead>
                 <tr>
                   <th>Título</th>
@@ -162,12 +162,12 @@ export default function Received() {
               <tbody>
                 {loadingList && Array.from({ length: 6 }).map((_, i) => (
                   <tr key={`skeleton-${i}`}>
-                    <td><div className="skeleton" style={{ width: 160 }} /></td>
-                    <td><div className="skeleton" style={{ width: 100 }} /></td>
-                    <td><div className="skeleton" style={{ width: 100 }} /></td>
-                    <td><div className="skeleton" style={{ width: 140 }} /></td>
-                    <td><div className="skeleton" style={{ width: 80 }} /></td>
-                    <td><div className="skeleton" style={{ width: 100 }} /></td>
+                    <td data-label="Título"><div className="skeleton" style={{ width: 160 }} /></td>
+                    <td data-label="Setor remetente"><div className="skeleton" style={{ width: 100 }} /></td>
+                    <td data-label="Destino"><div className="skeleton" style={{ width: 100 }} /></td>
+                    <td data-label="Data"><div className="skeleton" style={{ width: 140 }} /></td>
+                    <td data-label="Status"><div className="skeleton" style={{ width: 80 }} /></td>
+                    <td data-label="Ações"><div className="skeleton" style={{ width: 100 }} /></td>
                   </tr>
                 ))}
                 {!loadingList && filtered.map((d) => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense, lazy, useCallback } from "react";
 import {
   Routes,
   Route,
@@ -8,34 +8,42 @@ import {
 } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import * as api from "../services/api.js";
-import Login from "../pages/Login.jsx";
-import Dashboard from "../pages/Dashboard.jsx";
-import Received from "../pages/Received.jsx";
-import Sent from "../pages/Sent.jsx";
-import Evaluate from "../pages/Evaluate.jsx";
-import Notifications from "../pages/Notifications.jsx";
-import Profile from "../pages/Profile.jsx";
-import Alert from "../components/Alert.jsx";
-
-// Páginas Administrativas (SUPORTE)
-import AdminDashboard from "../pages/AdminDashboard.jsx";
-import AdminUsers from "../pages/UserManager.jsx";
-import AdminSectors from "../pages/SectorManager.jsx";
-import AdminLogs from "../pages/AuditLogs.jsx";
-import PermissionManager from "../pages/PermissionManager.jsx";
 
 import Sidebar from "../components/Sidebar.jsx";
 import { LogoutIcon } from "../components/Icons.jsx";
-import DocumentDetail from "../pages/DocumentDetail.jsx";
-import AcceptInvite from "../pages/AcceptInvite.jsx";
-import VerifyEmail from "../pages/VerifyEmail.jsx";
-import Recover from "../pages/Recover.jsx";
-import NewNotaFiscal from "../pages/NewNotaFiscal.jsx";
-import ReceivedNotas from "../pages/ReceivedNotas.jsx";
-import EvaluateNota from "../pages/EvaluateNota.jsx";
 import ToastManager from "../components/Toast.jsx";
+import Alert from "../components/Alert.jsx";
 import { PERMISSIONS, ROLES } from "../utils/acl.js";
 import { statuses, normalizeStatus } from "../utils/constants.js";
+
+// Lazy Loading das Páginas para melhor performance
+const Login = lazy(() => import("../pages/Login.jsx"));
+const Dashboard = lazy(() => import("../pages/Dashboard.jsx"));
+const Received = lazy(() => import("../pages/Received.jsx"));
+const Sent = lazy(() => import("../pages/Sent.jsx"));
+const Evaluate = lazy(() => import("../pages/Evaluate.jsx"));
+const Notifications = lazy(() => import("../pages/Notifications.jsx"));
+const Profile = lazy(() => import("../pages/Profile.jsx"));
+const AdminDashboard = lazy(() => import("../pages/AdminDashboard.jsx"));
+const AdminUsers = lazy(() => import("../pages/UserManager.jsx"));
+const AdminSectors = lazy(() => import("../pages/SectorManager.jsx"));
+const AdminLogs = lazy(() => import("../pages/AuditLogs.jsx"));
+const PermissionManager = lazy(() => import("../pages/PermissionManager.jsx"));
+const DocumentDetail = lazy(() => import("../pages/DocumentDetail.jsx"));
+const AcceptInvite = lazy(() => import("../pages/AcceptInvite.jsx"));
+const VerifyEmail = lazy(() => import("../pages/VerifyEmail.jsx"));
+const Recover = lazy(() => import("../pages/Recover.jsx"));
+const NewNotaFiscal = lazy(() => import("../pages/NewNotaFiscal.jsx"));
+const ReceivedNotas = lazy(() => import("../pages/ReceivedNotas.jsx"));
+const EvaluateNota = lazy(() => import("../pages/EvaluateNota.jsx"));
+
+// Componente de Loading para o Suspense
+const PageLoader = () => (
+  <div className="empty" style={{ height: '80vh', display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center', justifyContent: 'center' }}>
+    <div className="loading-spinner" />
+    <p style={{ color: 'var(--muted)', fontWeight: 500 }}>Carregando módulo...</p>
+  </div>
+);
 
 function Protected({ children, permission }) {
   const { user, loading, hasPermission } = useAuth();
@@ -59,7 +67,7 @@ function Layout({ children }) {
 
   const [counts, setCounts] = useState({ received: 0, notas: 0, notifications: 0 });
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!user?.sector && !isAdmin) return;
     try {
       if (isAdmin) {
@@ -68,7 +76,7 @@ function Layout({ children }) {
       }
 
       const [receivedRes, notasRes, notifsRes] = await Promise.all([
-        hasPermission(PERMISSIONS.VIEW_ATTEND_QUEUE) ? api.getReceived(user.sector, { page: 1, pageSize: 50, allStatuses: true }) : Promise.resolve({ items: [], total: 0 }),
+        hasPermission(PERMISSIONS.ATTEND_ORDER) ? api.getReceived(user.sector, { page: 1, pageSize: 20, allStatuses: true }) : Promise.resolve({ items: [], total: 0 }),
         hasPermission(PERMISSIONS.VIEW_NOTA_RECEIVED) ? api.getNotasFiscais(user.sector, "received") : Promise.resolve({ items: [] }),
         hasPermission(PERMISSIONS.NOTIFICATIONS) ? api.getNotifications(user.sector) : Promise.resolve([])
       ]);
@@ -93,15 +101,23 @@ function Layout({ children }) {
     } catch (err) {
       console.error("Erro ao carregar contadores:", err);
     }
-  };
+  }, [user?.sector, isAdmin, hasPermission]);
 
   useEffect(() => {
     fetchData();
-    const unsub = api.subscribe([api.CHANNELS.PROPOSTAS, api.CHANNELS.NOTIFICACOES], () => {
-      fetchData();
-    });
-    return () => unsub();
-  }, [user?.sector]);
+    
+    let timeout;
+    const handleUpdate = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => fetchData(), 5000); // Debounce maior para o layout (5s)
+    };
+
+    const unsub = api.subscribe([api.CHANNELS.PROPOSTAS, api.CHANNELS.NOTIFICACOES], handleUpdate);
+    return () => {
+      unsub();
+      clearTimeout(timeout);
+    };
+  }, [fetchData]);
 
   const doLogout = () => {
     logout();
@@ -165,7 +181,7 @@ function Layout({ children }) {
             ...(hasPermission(PERMISSIONS.CREATE_NOTA)
               ? [{ label: "Enviar Nota Fiscal", to: "/enviar-nota", icon: "file-text" }]
               : []),
-            ...(hasPermission(PERMISSIONS.VIEW_ATTEND_QUEUE)
+            ...(hasPermission(PERMISSIONS.ATTEND_ORDER)
               ? [{ 
                   label: "Pedidos para Atender", 
                   to: "/recebidos", 
@@ -224,7 +240,9 @@ function Layout({ children }) {
             </span>
           </button>
         </div>
-        {children}
+        <Suspense fallback={<PageLoader />}>
+          {children}
+        </Suspense>
       </main>
 
       {confirmLogout && (
